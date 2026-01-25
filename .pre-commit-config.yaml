@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: uv-lock-check
+        name: Validate pyproject.toml and lockfiles
+        entry: bash -c 'for dir in $(find layers -name "pyproject.toml" -exec dirname {} \;); do uv lock --check --directory "$dir" || exit 1; done'
+        language: system
+        pass_filenames: false
+        files: ^layers/.*/(pyproject\.toml|uv\.lock)$
