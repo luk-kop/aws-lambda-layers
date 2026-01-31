@@ -1,0 +1,316 @@
+name: Test Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number for S3 prefix (e.g., 123)'
+        required: true
+        type: string
+      layers:
+        description: 'Comma-separated layer names to build (leave empty to auto-detect changed layers)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  ARTIFACTS_BUCKET: ${{ vars.LAMBDA_LAYERS_BUCKET }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+jobs:
+  detect-layers:
+    name: Detect Layers to Build
+    runs-on: ubuntu-latest
+    outputs:
+      layers: ${{ steps.layers.outputs.layers }}
+      has_layers: ${{ steps.layers.outputs.has_layers }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine layers to build
+        id: layers
+        run: |
+          INPUT_LAYERS="${{ inputs.layers }}"
+
+          if [ -n "$INPUT_LAYERS" ]; then
+            # Use manually specified layers
+            echo "Using manually specified layers: $INPUT_LAYERS"
+            LAYERS_JSON=$(echo "$INPUT_LAYERS" | tr ',' '\n' | jq -R . | jq -s .)
+          else
+            # Auto-detect changed layers compared to main/master
+            echo "Auto-detecting changed layers..."
+
+            # Try main first, then master
+            BASE_BRANCH="origin/main"
+            if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
+              BASE_BRANCH="origin/master"
+            fi
+
+            echo "Comparing against: $BASE_BRANCH"
+
+            # Get changed layer directories
+            CHANGED=$(git diff --name-only "$BASE_BRANCH"...HEAD -- 'layers/' 2>/dev/null | cut -d'/' -f2 | sort -u || echo "")
+
+            LAYERS_JSON="[]"
+            for layer in $CHANGED; do
+              # Only include layers with flat structure (has [tool.lambda_layer])
+              if [ -f "layers/$layer/pyproject.toml" ]; then
+                if grep -q '\[tool\.lambda_layer\]' "layers/$layer/pyproject.toml"; then
+                  LAYERS_JSON=$(echo "$LAYERS_JSON" | jq --arg l "$layer" '. + [$l]')
+                  echo "  Found changed layer: $layer"
+                fi
+              fi
+            done
+          fi
+
+          echo "layers=$LAYERS_JSON" >> $GITHUB_OUTPUT
+
+          # Check if we have any layers to build
+          LAYER_COUNT=$(echo "$LAYERS_JSON" | jq 'length')
+          if [ "$LAYER_COUNT" -gt 0 ]; then
+            echo "has_layers=true" >> $GITHUB_OUTPUT
+            echo "Layers to build: $LAYERS_JSON"
+          else
+            echo "has_layers=false" >> $GITHUB_OUTPUT
+            echo "No layers to build"
+          fi
+
+  generate-matrix:
+    name: Generate Build Matrix
+    needs: detect-layers
+    if: needs.detect-layers.outputs.has_layers == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate combined build matrix
+        id: matrix
+        run: |
+          LAYERS='${{ needs.detect-layers.outputs.layers }}'
+
+          MATRIX=$(python3 << EOF
+          import tomllib
+          import json
+
+          layers = json.loads('$LAYERS')
+          matrix = []
+
+          for layer_name in layers:
+              pyproject_path = f"layers/{layer_name}/pyproject.toml"
+              try:
+                  with open(pyproject_path, "rb") as f:
+                      config = tomllib.load(f)
+
+                  layer_config = config["tool"]["lambda_layer"]
+                  version = config["project"]["version"]
+
+                  for py in layer_config["python_versions"]:
+                      for arch in layer_config["architectures"]:
+                          matrix.append({
+                              "layer": layer_name,
+                              "version": version,
+                              "python": py,
+                              "arch": arch
+                          })
+              except Exception as e:
+                  print(f"Warning: Failed to process {layer_name}: {e}", file=__import__('sys').stderr)
+
+          print(json.dumps({"include": matrix}))
+          EOF
+          )
+
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Build matrix:"
+          echo "$MATRIX" | python3 -m json.tool
+
+
+  build:
+    name: Build ${{ matrix.layer }} py${{ matrix.python }}-${{ matrix.arch }}
+    needs: [detect-layers, generate-matrix]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install packaging
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build variant
+        id: build
+        run: |
+          echo "Building ${{ matrix.layer }} for Python ${{ matrix.python }} on ${{ matrix.arch }}..."
+
+          if ! ./scripts/build-layer.sh \
+            "${{ matrix.layer }}" \
+            "${{ matrix.python }}" \
+            "${{ matrix.arch }}"; then
+            echo "::error::Build failed for ${{ matrix.layer }} py${{ matrix.python }}-${{ matrix.arch }}"
+            exit 1
+          fi
+
+          echo "✓ Build successful"
+
+      - name: Upload artifact to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.layer }}-py${{ matrix.python }}-${{ matrix.arch }}
+          path: .build/${{ matrix.layer }}/dist/*.zip
+          retention-days: 7
+
+
+  publish-test:
+    name: Publish to S3 Test Prefix
+    needs: [detect-layers, generate-matrix, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f -name "*.zip" | sort
+
+      - name: Publish to S3 test prefix
+        run: |
+          PR_NUM="${{ inputs.pr_number }}"
+          LAYERS='${{ needs.detect-layers.outputs.layers }}'
+
+          echo "Publishing test artifacts for PR #$PR_NUM..."
+
+          # Process each artifact directory
+          for artifact_dir in artifacts/*/; do
+            [ -d "$artifact_dir" ] || continue
+
+            # Extract layer name, python version, and arch from artifact name
+            # Format: <layer>-py<python>-<arch>
+            ARTIFACT_NAME=$(basename "$artifact_dir")
+            LAYER_NAME=$(echo "$ARTIFACT_NAME" | sed 's/-py[0-9.]*-.*$//')
+
+            # Get version from pyproject.toml
+            VERSION=$(python3 << EOF
+          import tomllib
+          with open("layers/$LAYER_NAME/pyproject.toml", "rb") as f:
+              print(tomllib.load(f)["project"]["version"])
+          EOF
+          )
+
+            for zip_file in "$artifact_dir"*.zip; do
+              [ -f "$zip_file" ] || continue
+
+              FILENAME=$(basename "$zip_file")
+              S3_KEY="test/$PR_NUM/$LAYER_NAME/$VERSION/$FILENAME"
+              S3_PATH="s3://$ARTIFACTS_BUCKET/$S3_KEY"
+
+              echo "Uploading: $FILENAME -> $S3_PATH"
+              aws s3 cp "$zip_file" "$S3_PATH"
+            done
+          done
+
+          echo ""
+          echo "✓ Test artifacts uploaded to s3://$ARTIFACTS_BUCKET/test/$PR_NUM/"
+          echo ""
+          echo "To deploy these test layers with Terraform, use:"
+          echo ""
+          echo '  layers = ['
+
+          # Generate Terraform usage example
+          echo "$LAYERS" | python3 -c "
+          import sys
+          import json
+          import tomllib
+
+          layers = json.load(sys.stdin)
+          for layer in layers:
+              with open(f'layers/{layer}/pyproject.toml', 'rb') as f:
+                  config = tomllib.load(f)
+              version = config['project']['version']
+              layer_config = config['tool']['lambda_layer']
+              for py in layer_config['python_versions']:
+                  for arch in layer_config['architectures']:
+                      py_short = py.replace('.', '')
+                      print(f'    {{ name = \"{layer}\", version = \"{version}\", python = \"{py_short}\", arch = \"{arch}\", s3_prefix = \"test/${{ inputs.pr_number }}\" }}')
+          "
+
+          echo '  ]'
+
+
+  summary:
+    name: Build Summary
+    needs: [detect-layers, generate-matrix, build, publish-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Test Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR Number:** ${{ inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.detect-layers.outputs.has_layers }}" != "true" ]; then
+            echo "⚠️ No layers detected for building." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Either specify layers manually or ensure there are changes in \`layers/\` directory." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          echo "### Layers Built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '${{ needs.detect-layers.outputs.layers }}' | python3 -c "
+          import sys
+          import json
+          layers = json.load(sys.stdin)
+          for layer in layers:
+              print(f'- {layer}')
+          " >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.build.result }}" == "success" ]; then
+            echo "### ✅ Build Status: Success" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Build Status: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Check the build job logs for details on which variant failed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.publish-test.result }}" == "success" ]; then
+            echo "### S3 Upload" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Artifacts uploaded to: \`s3://${{ vars.LAMBDA_LAYERS_BUCKET }}/test/${{ inputs.pr_number }}/\`" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -4,6 +4,11 @@ variable "aws_region" {
   default     = "eu-west-1"
 }
 
+variable "artifacts_bucket" {
+  description = "S3 bucket name for layer artifacts (shared account)"
+  type        = string
+}
+
 variable "project_name" {
   description = "Project name for tagging"
   type        = string
@@ -19,10 +24,11 @@ variable "layer_name_prefix" {
 variable "layers" {
   description = "List of Lambda layers to deploy"
   type = list(object({
-    name    = string # e.g., "common" or "common-utils"
-    version = string # e.g., "1_0" (underscore instead of dot)
-    python  = string # e.g., "312" (no dot)
-    arch    = string # "x86_64" or "arm64"
+    name      = string                     # e.g., "common" or "common-utils"
+    version   = string                     # e.g., "1.0" (dot notation for flat structure)
+    python    = string                     # e.g., "312" (no dot)
+    arch      = string                     # "x86_64" or "arm64"
+    s3_prefix = optional(string, "layers") # S3 key prefix (default: "layers", use "test/<pr-num>" for test builds)
   }))
   default = []
 
@@ -35,9 +41,9 @@ variable "layers" {
 
   validation {
     condition = alltrue([
-      for l in var.layers : can(regex("^[0-9]+_[0-9]+$", l.version))
+      for l in var.layers : can(regex("^[0-9]+\\.[0-9]+$", l.version))
     ])
-    error_message = "Layer version must be in format X_Y (e.g., '1_0', '2_1')."
+    error_message = "Layer version must be in format X.Y (e.g., '1.0', '2.1')."
   }
 
   validation {

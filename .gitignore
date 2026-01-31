@@ -4,7 +4,10 @@
 .terraform.lock.hcl
 .build/
 terraform.tfvars
+notes/
+.kiro/
 
 __pycache__/
+.pytest_cache/
 *.pyc
 .venv/

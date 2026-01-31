@@ -1,9 +1,10 @@
 aws_region        = "eu-west-1"
 project_name      = "my-project"
-layer_name_prefix = "" # optional, e.g., "myapp" -> "myapp-common-v1_0-..."
+artifacts_bucket  = "my-shared-lambda-layers" # S3 bucket with layer artifacts (shared account)
+layer_name_prefix = ""                        # optional, e.g., "myapp" -> "myapp-common-v1_0-..."
 
 # Layer format: object with { name, version, python, arch }
-# Maps to path: layers/{name}/v{version}/py{python}/{arch}/
+# Maps to S3 key: layers/{name}/v{version}/py{python}/{arch}.zip
 # Lambda name: {name}-v{version}-py{python}-{arch}
 layers = [
   { name = "common", version = "1_0", python = "312", arch = "x86_64" },

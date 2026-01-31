@@ -1,66 +1,90 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# Usage: ./scripts/create-layer.sh <name>
+# Creates: layers/<name>/pyproject.toml, uv.lock, src/
+#
+# This script creates a new Lambda layer with the flat structure:
+#   layers/<name>/
+#   ├── pyproject.toml     # Dependencies and [tool.lambda_layer] config
+#   ├── uv.lock            # Locked dependency versions
+#   └── src/               # Optional custom Python code
+#
+# Requirements: 2.1
+
 set -euo pipefail
 
-# Usage: ./create-layer.sh <name> <version> <python> <arch>
-# Example: ./create-layer.sh common 1_0 312 x86_64
-#
-# Arguments:
-#   name    - layer name (e.g., "common", "common-utils")
-#   version - version without dot (e.g., "1_0" for 1.0)
-#   python  - python version without dot (e.g., "312" for 3.12)
-#   arch    - architecture ("x86_64" or "arm64")
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
 
-NAME="${1:?Usage: $0 <name> <version> <python> <arch>}"
-VERSION="${2:?Usage: $0 <name> <version> <python> <arch>}"
-PYTHON="${3:?Usage: $0 <name> <version> <python> <arch>}"
-ARCH="${4:?Usage: $0 <name> <version> <python> <arch>}"
+usage() {
+    echo "Usage: $0 <name>"
+    echo ""
+    echo "Creates a new Lambda layer with template files."
+    echo ""
+    echo "Arguments:"
+    echo "  name    Layer name (e.g., 'utils', 'common')"
+    echo ""
+    echo "Example:"
+    echo "  $0 utils"
+    exit 1
+}
 
-# Validate arch
-if [[ "$ARCH" != "x86_64" && "$ARCH" != "arm64" ]]; then
-    echo "Error: arch must be 'x86_64' or 'arm64'"
+# Check arguments
+if [ $# -lt 1 ]; then
+    echo -e "${RED}ERROR: Layer name is required${NC}"
+    usage
+fi
+
+LAYER_NAME=$1
+LAYER_DIR="layers/$LAYER_NAME"
+
+# Validate layer name (alphanumeric, hyphens, underscores)
+if [[ ! "$LAYER_NAME" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+    echo -e "${RED}ERROR: Invalid layer name '$LAYER_NAME'${NC}"
+    echo "Layer name must start with a letter and contain only letters, numbers, hyphens, and underscores."
     exit 1
 fi
 
-# Validate version format (X_Y)
-if [[ ! "$VERSION" =~ ^[0-9]+_[0-9]+$ ]]; then
-    echo "Error: version must be in format X_Y (e.g., 1_0, 2_1)"
+# Check if layer already exists
+if [ -d "$LAYER_DIR" ]; then
+    echo -e "${RED}ERROR: Layer '$LAYER_NAME' already exists at $LAYER_DIR${NC}"
     exit 1
 fi
 
-# Validate python version format (XYZ, 2-3 digits)
-if [[ ! "$PYTHON" =~ ^[0-9]{2,3}$ ]]; then
-    echo "Error: python must be 2-3 digits without dots (e.g., 312 for Python 3.12)"
-    exit 1
-fi
+echo "Creating layer: $LAYER_NAME"
 
-# Transform to PEP 440 format for pyproject.toml
-# "1_0" -> "1.0"
-PEP_VERSION="${VERSION//_/.}"
-# "312" -> "3.12" (insert dot after first character)
-PEP_PYTHON="${PYTHON:0:1}.${PYTHON:1}"
+# Create layer directory structure
+mkdir -p "$LAYER_DIR/src"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LAYER_DIR="${SCRIPT_DIR}/../layers/${NAME}/v${VERSION}/py${PYTHON}/${ARCH}"
-
-if [[ -d "$LAYER_DIR" ]]; then
-    echo "Error: Layer already exists: $LAYER_DIR"
-    exit 1
-fi
-
-echo "Creating layer: ${NAME}/v${VERSION}/py${PYTHON}/${ARCH}"
-
-mkdir -p "$LAYER_DIR"
-
-cat > "${LAYER_DIR}/pyproject.toml" << EOF
+# Create pyproject.toml with template
+cat > "$LAYER_DIR/pyproject.toml" << EOF
 [project]
-name = "${NAME}"
-version = "${PEP_VERSION}"
-requires-python = "==${PEP_PYTHON}.*"
+name = "$LAYER_NAME"
+version = "1.0"
+requires-python = ">=3.11"
 dependencies = []
+
+[tool.lambda_layer]
+python_versions = ["3.12"]
+architectures = ["x86_64"]
+platforms = { x86_64 = "x86_64-manylinux2014", arm64 = "aarch64-manylinux2014" }
 EOF
 
-echo "Created: ${LAYER_DIR}/pyproject.toml"
+echo "  Created: $LAYER_DIR/pyproject.toml"
+
+# Initialize uv.lock
+echo "  Initializing lockfile..."
+(cd "$LAYER_DIR" && uv lock)
+
+echo "  Created: $LAYER_DIR/uv.lock"
+echo "  Created: $LAYER_DIR/src/"
+
+echo -e "${GREEN}✓ Created layer: $LAYER_DIR${NC}"
 echo ""
 echo "Next steps:"
-echo "  cd ${LAYER_DIR}"
-echo "  uv add <package-name>"
+echo "  1. Add dependencies: cd $LAYER_DIR && uv add <package>"
+echo "  2. Update python_versions/architectures in pyproject.toml if needed"
+echo "  3. Add custom code to src/ directory (optional)"
+echo "  4. Build locally: ./scripts/build-layer.sh $LAYER_NAME 3.12 x86_64"
+echo "  5. Release: git tag layer/$LAYER_NAME/1.0 && git push origin --tags"

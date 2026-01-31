@@ -1,0 +1,75 @@
+name: Validate
+
+on:
+  push:
+    paths:
+      - 'layers/**'
+  pull_request:
+    paths:
+      - 'layers/**'
+
+jobs:
+  validate-lockfile:
+    name: Validate Lockfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Check lockfiles are up-to-date
+        run: |
+          errors=0
+          for layer in layers/*/; do
+            if [ -f "$layer/pyproject.toml" ] && [ -f "$layer/uv.lock" ]; then
+              echo "Checking $layer..."
+              if ! (cd "$layer" && uv lock --check); then
+                echo "ERROR: Lockfile out of date in $layer"
+                errors=$((errors + 1))
+              fi
+            fi
+          done
+
+          if [ $errors -gt 0 ]; then
+            echo "ERROR: $errors layer(s) have out-of-date lockfiles"
+            exit 1
+          fi
+
+          echo "✓ All lockfiles are up-to-date"
+
+  validate-config:
+    name: Validate Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install packaging
+
+      - name: Validate layer configs
+        run: |
+          errors=0
+          for layer in layers/*/; do
+            if [ -f "$layer/pyproject.toml" ]; then
+              # Check if layer has [tool.lambda_layer] section (flat structure)
+              if grep -q '\[tool\.lambda_layer\]' "$layer/pyproject.toml"; then
+                echo "Validating $layer..."
+                if ! python3 scripts/validate-config.py validate "$layer"; then
+                  errors=$((errors + 1))
+                fi
+              fi
+            fi
+          done
+
+          if [ $errors -gt 0 ]; then
+            echo "ERROR: $errors layer(s) failed validation"
+            exit 1
+          fi
+
+          echo "✓ All layer configs valid"

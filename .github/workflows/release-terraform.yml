@@ -1,0 +1,121 @@
+name: Release Terraform Module
+
+on:
+  push:
+    tags:
+      - 'tf/*'
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.12.1'
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: terraform
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+  release:
+    name: Create GitHub Release
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse version from tag
+        id: version
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Tag format: tf/<version>
+          VERSION=$(echo "$TAG" | cut -d'/' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Parsed version: $VERSION"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Get commits since last tf/* tag
+          PREV_TAG=$(git tag -l 'tf/*' --sort=-v:refname | grep -v "^tf/$VERSION$" | head -1)
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "Previous tag: $PREV_TAG"
+            NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG"..HEAD -- terraform/ 2>/dev/null || echo "")
+          else
+            echo "No previous tag found"
+            NOTES="Initial release"
+          fi
+
+          if [ -z "$NOTES" ]; then
+            NOTES="No changes in terraform directory since last release"
+          fi
+
+          # Use heredoc for multiline output
+          {
+            echo "notes<<NOTES_EOF"
+            echo "$NOTES"
+            echo "NOTES_EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Terraform Module v${{ steps.version.outputs.version }}"
+          body: |
+            ## Terraform Module Release
+
+            **Version:** ${{ steps.version.outputs.version }}
+
+            ### Usage
+
+            Reference this module in your Terragrunt configuration:
+
+            ```hcl
+            terraform {
+              source = "git::https://github.com/${{ github.repository }}.git//terraform?ref=${{ github.ref_name }}"
+            }
+
+            inputs = {
+              artifacts_bucket = "my-lambda-layers-bucket"
+              layers = [
+                { name = "common", version = "1.0", python = "312", arch = "x86_64" }
+              ]
+            }
+            ```
+
+            Or use directly with Terraform:
+
+            ```hcl
+            module "lambda_layers" {
+              source = "git::https://github.com/${{ github.repository }}.git//terraform?ref=${{ github.ref_name }}"
+
+              artifacts_bucket = "my-lambda-layers-bucket"
+              layers = [
+                { name = "common", version = "1.0", python = "312", arch = "x86_64" }
+              ]
+            }
+            ```
+
+            ### Changes
+
+            ${{ steps.notes.outputs.notes }}
+          generate_release_notes: false

@@ -1,0 +1,226 @@
+name: Validate Layers
+
+on:
+  pull_request:
+    paths:
+      - 'layers/**'
+  workflow_dispatch:
+    inputs:
+      upload_test:
+        description: 'Upload artifacts to test/ prefix'
+        type: boolean
+        default: false
+
+env:
+  UPLOAD_TEST: ${{ inputs.upload_test || vars.UPLOAD_TEST_ARTIFACTS || 'false' }}
+  ARTIFACTS_BUCKET: ${{ vars.LAMBDA_LAYERS_BUCKET }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+jobs:
+  detect:
+    name: Detect Changed Layers
+    runs-on: ubuntu-latest
+    outputs:
+      layers: ${{ steps.detect.outputs.layers }}
+      matrix: ${{ steps.detect.outputs.matrix }}
+      build_matrix: ${{ steps.detect.outputs.build_matrix }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed layers
+        id: detect
+        run: |
+          # Run detect-changes.sh to find changed layers
+          RESULT=$(./scripts/detect-changes.sh pr "${{ github.base_ref }}")
+          echo "Detection result: $RESULT"
+
+          # Extract values from JSON output
+          LAYERS=$(echo "$RESULT" | jq -c '.layers')
+          HAS_CHANGES=$(echo "$RESULT" | jq -r '.has_changes')
+
+          # Simple matrix for validate job (layer name and version)
+          # Transform from {name, version} to {layer, version} for consistency
+          VALIDATE_MATRIX=$(echo "$RESULT" | jq -c '{include: [.matrix[] | {layer: .name, version: .version}]}')
+
+          # Build matrix for build job (layer, version, python, arch)
+          BUILD_MATRIX=$(echo "$RESULT" | jq -c '.build_matrix')
+
+          # Set outputs
+          echo "layers=$LAYERS" >> $GITHUB_OUTPUT
+          echo "matrix=$VALIDATE_MATRIX" >> $GITHUB_OUTPUT
+          echo "build_matrix=$BUILD_MATRIX" >> $GITHUB_OUTPUT
+          echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
+
+          # Log summary
+          if [ "$HAS_CHANGES" = "true" ]; then
+            echo "::notice::Changed layers detected: $LAYERS"
+          else
+            echo "::notice::No layer changes detected"
+          fi
+
+  validate:
+    name: Validate ${{ matrix.layer }}
+    needs: detect
+    if: needs.detect.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Check lockfile is up to date
+        id: lockfile
+        working-directory: layers/${{ matrix.layer }}
+        run: |
+          echo "Checking lockfile for ${{ matrix.layer }}..."
+          if ! uv lock --check; then
+            echo "::error::ERROR: Lockfile out of date in layers/${{ matrix.layer }}/. Run 'cd layers/${{ matrix.layer }} && uv lock' to fix."
+            exit 1
+          fi
+          echo "✓ Lockfile is up to date"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check S3 version does not exist
+        id: version-check
+        run: |
+          echo "Checking if version ${{ matrix.version }} exists for layer '${{ matrix.layer }}'..."
+
+          # Install dependencies for validate-config.py (packaging is needed for SpecifierSet)
+          pip install packaging > /dev/null 2>&1
+
+          # check-version returns exit code 0 if version EXISTS, 1 if it does NOT exist
+          if python scripts/validate-config.py check-version "layers/${{ matrix.layer }}" --bucket "${{ env.ARTIFACTS_BUCKET }}" --prefix layers; then
+            echo "::error::ERROR: Version ${{ matrix.version }} already exists for layer '${{ matrix.layer }}'. Bump version in pyproject.toml."
+            exit 1
+          fi
+          echo "✓ Version ${{ matrix.version }} is available (does not exist in S3)"
+
+  build:
+    name: Build ${{ matrix.layer }} py${{ matrix.python }}-${{ matrix.arch }}
+    needs: [detect, validate]
+    if: needs.detect.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.build_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Build layer variant
+        id: build
+        run: |
+          echo "Building ${{ matrix.layer }} (Python ${{ matrix.python }}, ${{ matrix.arch }})..."
+          ./scripts/build-layer.sh "${{ matrix.layer }}" "${{ matrix.python }}" "${{ matrix.arch }}"
+
+          # Calculate python_short (remove dots from version)
+          PYTHON_SHORT="${{ matrix.python }}"
+          PYTHON_SHORT="${PYTHON_SHORT//./}"
+          echo "python_short=$PYTHON_SHORT" >> $GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.layer }}-${{ matrix.version }}-py${{ steps.build.outputs.python_short }}-${{ matrix.arch }}
+          path: .build/${{ matrix.layer }}/dist/py${{ steps.build.outputs.python_short }}-${{ matrix.arch }}.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  upload-test:
+    name: Upload Test Artifacts
+    needs: [detect, build]
+    if: inputs.upload_test == true && needs.detect.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload test artifacts to S3
+        env:
+          BUILD_MATRIX: ${{ needs.detect.outputs.build_matrix }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "Uploading test artifacts for PR #$PR_NUMBER"
+          echo ""
+
+          # Parse build matrix and upload each artifact
+          echo "$BUILD_MATRIX" | jq -c '.include[]' | while read -r entry; do
+            LAYER=$(echo "$entry" | jq -r '.layer')
+            VERSION=$(echo "$entry" | jq -r '.version')
+            PYTHON=$(echo "$entry" | jq -r '.python')
+            ARCH=$(echo "$entry" | jq -r '.arch')
+
+            # Calculate python_short (remove dots from version)
+            PYTHON_SHORT="${PYTHON//./}"
+
+            # Artifact name matches the upload pattern from build job
+            ARTIFACT_NAME="${LAYER}-${VERSION}-py${PYTHON_SHORT}-${ARCH}"
+            ARTIFACT_FILE="py${PYTHON_SHORT}-${ARCH}.zip"
+
+            echo "Processing: $ARTIFACT_NAME"
+
+            # Create build directory structure expected by upload-layer.sh
+            BUILD_DIR=".build/${LAYER}/dist"
+            mkdir -p "$BUILD_DIR"
+
+            # Move artifact to expected location
+            if [ -f "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" ]; then
+              cp "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" "$BUILD_DIR/"
+
+              # Upload to test prefix (allows overwriting)
+              ./scripts/upload-layer.sh "$LAYER" "$VERSION" "${{ env.ARTIFACTS_BUCKET }}" "test/${PR_NUMBER}"
+
+              # Clean up for next iteration
+              rm -rf ".build/${LAYER}"
+            else
+              echo "::warning::Artifact not found: artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}"
+            fi
+
+            echo ""
+          done
+
+          echo "✓ Test artifacts uploaded to s3://${{ env.ARTIFACTS_BUCKET }}/test/${PR_NUMBER}/"
