@@ -11,11 +11,6 @@ on:
         type: boolean
         default: false
 
-env:
-  UPLOAD_TEST: ${{ inputs.upload_test || vars.UPLOAD_TEST_ARTIFACTS || 'false' }}
-  ARTIFACTS_BUCKET: ${{ vars.LAMBDA_LAYERS_BUCKET }}
-  AWS_REGION: ${{ vars.AWS_REGION }}
-
 jobs:
   detect:
     name: Detect Changed Layers
@@ -100,7 +95,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Check S3 version does not exist
         id: version-check
@@ -111,7 +106,7 @@ jobs:
           pip install packaging > /dev/null 2>&1
 
           # check-version returns exit code 0 if version EXISTS, 1 if it does NOT exist
-          if python scripts/validate-config.py check-version "layers/${{ matrix.layer }}" --bucket "${{ env.ARTIFACTS_BUCKET }}" --prefix layers; then
+          if python scripts/validate-config.py check-version "layers/${{ matrix.layer }}" --bucket "${{ vars.LAMBDA_LAYERS_BUCKET }}" --prefix layers; then
             echo "::error::ERROR: Version ${{ matrix.version }} already exists for layer '${{ matrix.layer }}'. Bump version in pyproject.toml."
             exit 1
           fi
@@ -172,7 +167,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v7
@@ -212,7 +207,7 @@ jobs:
               cp "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" "$BUILD_DIR/"
 
               # Upload to test prefix (allows overwriting)
-              ./scripts/upload-layer.sh "$LAYER" "$VERSION" "${{ env.ARTIFACTS_BUCKET }}" "test/${PR_NUMBER}"
+              ./scripts/upload-layer.sh "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" "test/${PR_NUMBER}"
 
               # Clean up for next iteration
               rm -rf ".build/${LAYER}"
@@ -223,4 +218,4 @@ jobs:
             echo ""
           done
 
-          echo "✓ Test artifacts uploaded to s3://${{ env.ARTIFACTS_BUCKET }}/test/${PR_NUMBER}/"
+          echo "✓ Test artifacts uploaded to s3://${{ vars.LAMBDA_LAYERS_BUCKET }}/test/${PR_NUMBER}/"

@@ -9,10 +9,6 @@ on:
     paths:
       - 'layers/**'
 
-env:
-  ARTIFACTS_BUCKET: ${{ vars.LAMBDA_LAYERS_BUCKET }}
-  AWS_REGION: ${{ vars.AWS_REGION }}
-
 jobs:
   # Detect changed layers and output matrix for downstream jobs
   detect:
@@ -117,7 +113,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v7
@@ -160,7 +156,7 @@ jobs:
               cp "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" "$BUILD_DIR/"
 
               # Upload to layers/ prefix (immutability enforced by upload-layer.sh)
-              ./scripts/upload-layer.sh "$LAYER" "$VERSION" "${{ env.ARTIFACTS_BUCKET }}" "layers"
+              ./scripts/upload-layer.sh "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" "layers"
 
               # Clean up for next iteration
               rm -rf ".build/${LAYER}"
@@ -172,7 +168,7 @@ jobs:
             echo ""
           done
 
-          echo "✓ Layer artifacts published to s3://${{ env.ARTIFACTS_BUCKET }}/layers/"
+          echo "✓ Layer artifacts published to s3://${{ vars.LAMBDA_LAYERS_BUCKET }}/layers/"
 
   # Create GitHub releases for published layers
   release:
