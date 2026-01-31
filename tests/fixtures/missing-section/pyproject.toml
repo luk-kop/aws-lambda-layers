@@ -1,7 +1,0 @@
-[project]
-name = "missing-section"
-version = "1.0"
-requires-python = ">=3.11"
-dependencies = []
-
-# Missing [tool.lambda_layer] section
