@@ -133,6 +133,9 @@ jobs:
         with:
           version: "latest"
 
+      - name: Install build dependencies
+        run: pip install packaging
+
       - name: Build layer variant
         id: build
         run: |
