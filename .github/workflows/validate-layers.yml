@@ -28,8 +28,12 @@ jobs:
       - name: Detect changed layers
         id: detect
         run: |
-          # Run detect-changes.sh to find changed layers
-          RESULT=$(./scripts/detect-changes.sh pr "${{ github.base_ref }}")
+          # For workflow_dispatch, compare against main; for PR, use base_ref
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RESULT=$(./scripts/detect-changes.sh pr "main")
+          else
+            RESULT=$(./scripts/detect-changes.sh pr "${{ github.base_ref }}")
+          fi
           echo "Detection result: $RESULT"
 
           # Extract values from JSON output
