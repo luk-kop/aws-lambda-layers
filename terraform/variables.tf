@@ -22,13 +22,12 @@ variable "layer_name_prefix" {
 }
 
 variable "layers" {
-  description = "List of Lambda layers to deploy"
+  description = "List of production Lambda layers to deploy (from layers/ S3 prefix)"
   type = list(object({
-    name      = string                     # e.g., "common" or "common-utils"
-    version   = string                     # e.g., "1.0" (dot notation for flat structure)
-    python    = string                     # e.g., "312" (no dot)
-    arch      = string                     # "x86_64" or "arm64"
-    s3_prefix = optional(string, "layers") # S3 key prefix (default: "layers", use "test/<pr-num>" for test builds)
+    name    = string # e.g., "common" or "common-utils"
+    version = string # e.g., "1.0" (dot notation for flat structure)
+    python  = string # e.g., "312" (no dot)
+    arch    = string # "x86_64" or "arm64"
   }))
   default = []
 
@@ -58,5 +57,52 @@ variable "layers" {
       for l in var.layers : contains(["x86_64", "arm64"], l.arch)
     ])
     error_message = "Layer arch must be 'x86_64' or 'arm64'."
+  }
+}
+
+variable "test_layers" {
+  description = "List of test Lambda layers to deploy (from test/<pr>/ S3 prefix)"
+  type = list(object({
+    name    = string # e.g., "common" or "common-utils"
+    version = string # e.g., "1.0" (dot notation for flat structure)
+    python  = string # e.g., "312" (no dot)
+    arch    = string # "x86_64" or "arm64"
+    pr      = string # PR number, maps to test/<pr>/ S3 prefix
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for l in var.test_layers : can(regex("^[a-z][a-z0-9-]*$", l.name))
+    ])
+    error_message = "Layer name must start with lowercase letter and contain only lowercase letters, numbers, and hyphens."
+  }
+
+  validation {
+    condition = alltrue([
+      for l in var.test_layers : can(regex("^[0-9]+\\.[0-9]+$", l.version))
+    ])
+    error_message = "Layer version must be in format X.Y (e.g., '1.0', '2.1')."
+  }
+
+  validation {
+    condition = alltrue([
+      for l in var.test_layers : can(regex("^[0-9]{2,3}$", l.python))
+    ])
+    error_message = "Layer python must be 2-3 digits without dots (e.g., '312' for Python 3.12)."
+  }
+
+  validation {
+    condition = alltrue([
+      for l in var.test_layers : contains(["x86_64", "arm64"], l.arch)
+    ])
+    error_message = "Layer arch must be 'x86_64' or 'arm64'."
+  }
+
+  validation {
+    condition = alltrue([
+      for l in var.test_layers : can(regex("^[0-9]+$", l.pr))
+    ])
+    error_message = "PR number must contain only digits."
   }
 }

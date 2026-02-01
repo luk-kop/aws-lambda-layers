@@ -1,0 +1,13 @@
+[project]
+name = "azure-id"
+version = "1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "azure-identity>=1.25.1",
+    "requests>=2.32.5",
+]
+
+[tool.lambda_layer]
+python_versions = ["3.12"]
+architectures = ["x86_64"]
+platforms = { x86_64 = "x86_64-manylinux2014", arm64 = "aarch64-manylinux2014" }

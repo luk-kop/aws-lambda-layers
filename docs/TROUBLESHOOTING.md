@@ -152,6 +152,65 @@ If test artifacts are not appearing in S3:
 2. Go to GitHub Actions and approve the pending deployment
 3. Verify the `LAMBDA_LAYERS_BUCKET` variable is set correctly
 
+## Layer Name Conflicts with PyPI Package
+
+If you get an error like:
+
+```
+error: Requirement name `requests` matches project name `requests`, but self-dependencies
+are not permitted without the `--dev` or `--optional` flags.
+```
+
+This happens when your layer name matches a PyPI package you're trying to add as a dependency.
+
+### Solution 1: Rename the layer (recommended)
+
+Rename the layer to avoid shadowing the PyPI package:
+
+```bash
+# Rename the directory
+mv layers/requests layers/http-utils
+
+# Update pyproject.toml
+cd layers/http-utils
+```
+
+```toml
+[project]
+name = "http-utils"  # Changed from "requests"
+version = "1.0"
+requires-python = ">=3.11"
+dependencies = []
+```
+
+Then add the dependency normally:
+
+```bash
+uv add requests
+```
+
+### Solution 2: Add dependency manually
+
+If you want to keep the layer name, edit `pyproject.toml` directly instead of using `uv add`:
+
+```toml
+[project]
+name = "requests"
+version = "1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32",
+]
+```
+
+Then regenerate the lockfile:
+
+```bash
+uv lock
+```
+
+**Recommendation**: Use Solution 1 to avoid confusion. Naming a layer after a well-known package can cause issues and makes the codebase harder to understand.
+
 ## Pre-commit Hook Fails
 
 If pre-commit hooks fail:

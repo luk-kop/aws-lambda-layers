@@ -172,9 +172,13 @@ Configure the `test-upload` environment in GitHub repository settings → Enviro
 # terraform.tfvars
 artifacts_bucket = "my-lambda-layers"
 
+# Production layers (from layers/ S3 prefix)
 layers = [
   { name = "common", version = "1.0", python = "312", arch = "x86_64" }
 ]
+
+# Test layers (from test/<pr>/ S3 prefix) - typically empty in prod
+test_layers = []
 ```
 
 ```bash
@@ -185,18 +189,14 @@ terraform apply
 
 ## Deploy Test Layers (from PR)
 
-Use the `s3_prefix` parameter to deploy test artifacts:
+Use the `test_layers` variable to deploy test artifacts:
 
 ```hcl
 # terraform.tfvars - Deploy test layer from PR #123
-layers = [
-  {
-    name      = "common"
-    version   = "1.0"
-    python    = "312"
-    arch      = "x86_64"
-    s3_prefix = "test/123"  # Points to test artifacts
-  }
+layers = []
+
+test_layers = [
+  { name = "common", version = "1.0", python = "312", arch = "x86_64", pr = "123" }
 ]
 ```
 
@@ -209,7 +209,14 @@ Reference the layer ARN from Terraform outputs:
 ```hcl
 resource "aws_lambda_function" "example" {
   # ...
-  layers = [module.layers.layer_arns["common-v1.0-py312-x86_64"]]
+  # Production layer (note: version dot replaced with underscore)
+  layers = [module.layers.layer_arns["common-v1_0-py312-x86_64"]]
+}
+
+resource "aws_lambda_function" "test_example" {
+  # ...
+  # Test layer
+  layers = [module.layers.test_layer_arns["test-123-common-v1_0-py312-x86_64"]]
 }
 ```
 

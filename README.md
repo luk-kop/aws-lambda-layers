@@ -97,7 +97,9 @@ aws-lambda-layers/
 
 ## Layer Configuration
 
-Each layer has a flat structure with `pyproject.toml` containing both dependencies and build configuration:
+Each layer has a flat structure with `pyproject.toml` containing both dependencies and build configuration.
+
+> **Note**: Avoid naming layers after PyPI packages (e.g., `requests`, `boto3`). This causes conflicts when adding dependencies with `uv add`. See [Layer Name Conflicts](docs/TROUBLESHOOTING.md#layer-name-conflicts-with-pypi-package) for solutions.
 
 ```toml
 # layers/common/pyproject.toml
