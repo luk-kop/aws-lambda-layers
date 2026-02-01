@@ -137,7 +137,7 @@ jobs:
         with:
           name: ${{ matrix.layer }}-${{ matrix.version }}-py${{ steps.build.outputs.python_short }}-${{ matrix.arch }}
           path: .build/${{ matrix.layer }}/dist/py${{ steps.build.outputs.python_short }}-${{ matrix.arch }}.zip
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
   upload-test:
@@ -162,6 +162,11 @@ jobs:
         uses: actions/download-artifact@v6
         with:
           path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          ls -laR artifacts/ || echo "No artifacts found"
 
       - name: Upload test artifacts to S3
         env:
