@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Property-based tests for detect-changes.sh script.
+"""Property-based tests for build-matrix.py script.
 
 This module contains property-based tests using hypothesis to verify
-the change detection functionality across many generated inputs.
+the path filtering logic used in the build-matrix.py script.
 
 Feature: auto-detect-layer-release, Property 1: Change Detection Path Filtering
 """
@@ -22,7 +22,7 @@ def extract_layer_names(file_paths: list[str]) -> list[str]:
     """Extract unique layer names from a list of file paths.
 
     This is a pure Python implementation of the path filtering logic
-    used in detect-changes.sh. It filters paths to only those matching
+    used in build-matrix.py. It filters paths to only those matching
     `layers/<name>/` and returns unique layer names.
 
     Args:

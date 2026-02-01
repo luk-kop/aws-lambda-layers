@@ -30,6 +30,27 @@ If you edit `pyproject.toml` manually, regenerate the lockfile:
 uv lock
 ```
 
+## Add Custom Python Code
+
+Place custom Python modules in the `src/` directory. These files are automatically included in the layer ZIP alongside installed dependencies.
+
+```bash
+# Create a custom module
+cat > layers/<name>/src/utils.py << 'EOF'
+def helper_function():
+    return "Hello from layer"
+EOF
+```
+
+The `src/` contents are copied to the `python/` directory in the ZIP, so they're importable in Lambda:
+
+```python
+# In your Lambda function
+from utils import helper_function
+```
+
+Remember to bump the version when changing `src/` contents.
+
 ## Build Layer Locally
 
 ```bash
@@ -203,6 +224,56 @@ aws lambda list-layer-versions --layer-name <layer-name>
 # Get layer ARN from Terraform output
 cd terraform
 terraform output layer_arns
+```
+
+## CI Integration Examples
+
+The `layer_config.py` script outputs CI-agnostic JSON that works with any CI system when receiving paths via stdin.
+
+### GitHub Actions
+
+```yaml
+detect-changes:
+  runs-on: ubuntu-latest
+  outputs:
+    matrix: ${{ steps.matrix.outputs.matrix }}
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Build matrix
+      id: matrix
+      run: |
+        RESULT=$(git diff --name-only origin/main...HEAD | grep '^layers/' | python scripts/layer_config.py)
+        # Wrap in {include: [...]} for GitHub Actions matrix strategy
+        echo "matrix=$(echo $RESULT | jq -c '{include: .build_matrix}')" >> $GITHUB_OUTPUT
+
+build:
+  needs: detect-changes
+  strategy:
+    matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+  steps:
+    - run: ./scripts/build-layer.sh ${{ matrix.layer }} ${{ matrix.python }} ${{ matrix.arch }}
+```
+
+### GitLab CI
+
+```yaml
+detect-changes:
+  script:
+    - RESULT=$(git diff --name-only origin/main...HEAD | grep '^layers/' | python scripts/layer_config.py)
+    - echo "BUILD_MATRIX=$(echo $RESULT | jq -c '.build_matrix')" >> build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+
+build-layer:
+  needs: [detect-changes]
+  parallel:
+    matrix:
+      - VARIANT: $BUILD_MATRIX
+  script:
+    - ./scripts/build-layer.sh $VARIANT_LAYER $VARIANT_PYTHON $VARIANT_ARCH
 ```
 
 ## Next Steps

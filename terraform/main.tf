@@ -37,12 +37,14 @@ resource "aws_lambda_layer_version" "this" {
 
   # layer_name uses the layer_key format directly (already AWS-compatible)
   layer_name = "${var.layer_name_prefix != "" ? "${var.layer_name_prefix}-" : ""}${each.key}"
+
   # Human-readable description
-  description = "Layer ${each.value.name} v${each.value.version} (Python ${join(".", [substr(each.value.python, 0, 1), substr(each.value.python, 1, -1)])}, ${each.value.arch})"
+  # Transform python "312" to "3.12" by splitting: first char + "." + remaining chars
+  description = "Layer ${each.value.name} v${each.value.version} (Python ${substr(each.value.python, 0, 1)}.${substr(each.value.python, 1, length(each.value.python) - 1)}, ${each.value.arch})"
 
   source_code_hash = data.aws_s3_object.layer[each.key].etag
 
-  # Transform "312" to "python3.12"
-  compatible_runtimes      = ["python${join(".", [substr(each.value.python, 0, 1), substr(each.value.python, 1, -1)])}"]
+  # Transform "312" to "python3.12" for Lambda runtime
+  compatible_runtimes      = ["python${substr(each.value.python, 0, 1)}.${substr(each.value.python, 1, length(each.value.python) - 1)}"]
   compatible_architectures = [each.value.arch]
 }

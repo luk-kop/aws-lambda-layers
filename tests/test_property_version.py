@@ -18,17 +18,17 @@ from hypothesis import strategies as st
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-# Load validate-config.py as a module
+# Load layer_config.py as a module
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 
-script_path = Path(__file__).parent.parent / "scripts" / "validate-config.py"
-loader = SourceFileLoader("validate_config", str(script_path))
-spec = spec_from_loader("validate_config", loader)
-validate_config_module = module_from_spec(spec)
-loader.exec_module(validate_config_module)
+script_path = Path(__file__).parent.parent / "scripts" / "layer_config.py"
+loader = SourceFileLoader("layer_config", str(script_path))
+spec = spec_from_loader("layer_config", loader)
+layer_config_module = module_from_spec(spec)
+loader.exec_module(layer_config_module)
 
-get_version = validate_config_module.get_version
+get_version = layer_config_module.get_version
 
 
 # =============================================================================

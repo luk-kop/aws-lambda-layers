@@ -7,52 +7,46 @@ Common issues and solutions for AWS Lambda Layers.
 If Terraform fails with `NoSuchKey` error:
 
 ```bash
-# Check if artifact exists
-./scripts/check-artifacts.sh <name> <version> <bucket>
+# Check if all artifacts exist for a version
+python scripts/check_artifacts.py check <name> <version> <bucket>
 
 # Example:
-./scripts/check-artifacts.sh common 1.0 my-lambda-layers
+python scripts/check_artifacts.py check common 1.0 my-lambda-layers
 ```
 
-### Scenario 1: CI build failed after tag was pushed
+### Scenario 1: CI release failed after merge to main
 
-```bash
-# Delete and recreate the tag to trigger CI rebuild
-git tag -d layer/<name>/<version>
-git push origin :refs/tags/layer/<name>/<version>
-git tag layer/<name>/<version>
-git push origin --tags
-```
+1. Go to GitHub Actions → Release Layers workflow
+2. Find the failed run
+3. Click "Re-run all jobs"
 
-### Scenario 2: Tag exists but was never pushed
+Note: Re-running will fail if artifacts already exist in S3 (immutability check).
 
-```bash
-git push origin layer/<name>/<version>
-```
+### Scenario 2: Need to rebuild with updated dependencies
 
-### Scenario 3: Need to rebuild with updated dependencies
+Since layers are released automatically on merge to main, create a new version:
 
 ```bash
 # Update version in pyproject.toml
-# Edit layers/<name>/pyproject.toml: version = "X.Y+1"
+cd layers/<name>
+# Edit pyproject.toml: version = "X.Y+1"
 
 # Update lockfile
-cd layers/<name>
 uv lock
 
-# Commit and create new tag
-git add layers/<name>/
+# Commit and push via PR
+git add .
 git commit -m "<name>: bump to X.Y+1"
-git tag layer/<name>/X.Y+1
-git push origin main --tags
+git push origin feature/<name>-bump
+# Create PR → merge → CI builds and publishes automatically
 ```
 
 ## Re-running Failed CI Build
 
 If CI build failed due to transient error:
 
-1. Go to GitHub Actions → Release Layer workflow
-2. Find the failed run for your tag
+1. Go to GitHub Actions → Release Layers workflow
+2. Find the failed run
 3. Click "Re-run all jobs"
 
 Note: Re-running will fail if artifacts already exist in S3 (immutability check).
@@ -111,7 +105,7 @@ If `build-layer.sh` fails:
 3. Check the layer has valid configuration:
 
 ```bash
-python scripts/validate-config.py validate layers/<name>
+python scripts/validate_config.py validate layers/<name>
 ```
 
 ## Terraform Can't Find Layer

@@ -60,7 +60,7 @@ jobs:
               # Check if layer has [tool.lambda_layer] section (flat structure)
               if grep -q '\[tool\.lambda_layer\]' "$layer/pyproject.toml"; then
                 echo "Validating $layer..."
-                if ! python3 scripts/validate-config.py validate "$layer"; then
+                if ! python3 scripts/validate_config.py validate "$layer"; then
                   errors=$((errors + 1))
                 fi
               fi

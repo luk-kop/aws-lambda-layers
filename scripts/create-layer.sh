@@ -10,10 +10,8 @@
 
 set -euo pipefail
 
-# Color output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m' # No Color
+# Directory containing all layer definitions
+LAYERS_DIR="layers"
 
 usage() {
     echo "Usage: $0 <name>"
@@ -30,23 +28,23 @@ usage() {
 
 # Check arguments
 if [ $# -lt 1 ]; then
-    echo -e "${RED}ERROR: Layer name is required${NC}"
+    echo "❌ ERROR: Layer name is required"
     usage
 fi
 
 LAYER_NAME=$1
-LAYER_DIR="layers/$LAYER_NAME"
+LAYER_DIR="$LAYERS_DIR/$LAYER_NAME"
 
 # Validate layer name (alphanumeric, hyphens, underscores)
 if [[ ! "$LAYER_NAME" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
-    echo -e "${RED}ERROR: Invalid layer name '$LAYER_NAME'${NC}"
+    echo "❌ ERROR: Invalid layer name '$LAYER_NAME'"
     echo "Layer name must start with a letter and contain only letters, numbers, hyphens, and underscores."
     exit 1
 fi
 
 # Check if layer already exists
 if [ -d "$LAYER_DIR" ]; then
-    echo -e "${RED}ERROR: Layer '$LAYER_NAME' already exists at $LAYER_DIR${NC}"
+    echo "❌ ERROR: Layer '$LAYER_NAME' already exists at $LAYER_DIR"
     exit 1
 fi
 
@@ -78,11 +76,11 @@ echo "  Initializing lockfile..."
 echo "  Created: $LAYER_DIR/uv.lock"
 echo "  Created: $LAYER_DIR/src/"
 
-echo -e "${GREEN}✓ Created layer: $LAYER_DIR${NC}"
+echo "✅ Created layer: $LAYER_DIR"
 echo ""
 echo "Next steps:"
 echo "  1. Add dependencies: cd $LAYER_DIR && uv add <package>"
 echo "  2. Update python_versions/architectures in pyproject.toml if needed"
 echo "  3. Add custom code to src/ directory (optional)"
 echo "  4. Build locally: ./scripts/build-layer.sh $LAYER_NAME 3.12 x86_64"
-echo "  5. Release: git tag layer/$LAYER_NAME/1.0 && git push origin --tags"
+echo "  5. Commit changes and open a PR to main"

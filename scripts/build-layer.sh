@@ -7,12 +7,6 @@
 
 set -euo pipefail
 
-# Color output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m' # No Color
-
 usage() {
     echo "Usage: $0 <name> <python> <arch>"
     echo ""
@@ -33,7 +27,7 @@ usage() {
 
 # Check arguments
 if [ $# -lt 3 ]; then
-    echo -e "${RED}ERROR: Missing required arguments${NC}"
+    echo "❌ ERROR: Missing required arguments"
     usage
 fi
 
@@ -41,34 +35,40 @@ LAYER_NAME=$1
 PYTHON_VERSION=$2
 ARCH=$3
 
-LAYER_DIR="layers/$LAYER_NAME"
-BUILD_DIR=".build/$LAYER_NAME"
+# Directory containing all layer definitions
+LAYERS_DIR="layers"
+
+# Build directory root (convention shared with upload-layer.py)
+BUILD_ROOT=".build"
+
+LAYER_DIR="$LAYERS_DIR/$LAYER_NAME"
+BUILD_DIR="$BUILD_ROOT/$LAYER_NAME"
 PYTHON_SHORT="${PYTHON_VERSION//./}"
 ARTIFACT_NAME="py${PYTHON_SHORT}-${ARCH}.zip"
 
 # Check layer directory exists
 if [ ! -d "$LAYER_DIR" ]; then
-    echo -e "${RED}ERROR: Layer directory '$LAYER_DIR' not found${NC}"
+    echo "❌ ERROR: Layer directory '$LAYER_DIR' not found"
     exit 1
 fi
 
 # Check pyproject.toml exists
 if [ ! -f "$LAYER_DIR/pyproject.toml" ]; then
-    echo -e "${RED}ERROR: pyproject.toml not found in $LAYER_DIR${NC}"
+    echo "❌ ERROR: pyproject.toml not found in $LAYER_DIR"
     exit 1
 fi
 
 echo "Building layer: $LAYER_NAME (Python $PYTHON_VERSION, $ARCH)"
 
-# Validate configuration using validate-config.py
+# Validate configuration using validate_config.py
 echo "  Validating configuration..."
-if ! python3 scripts/validate-config.py validate "$LAYER_DIR"; then
-    echo -e "${RED}ERROR: Configuration validation failed${NC}"
+if ! python3 scripts/validate_config.py validate "$LAYER_DIR"; then
+    echo "❌ ERROR: Configuration validation failed"
     exit 1
 fi
 
 # Get platform from config
-PLATFORM=$(python3 scripts/validate-config.py platform "$LAYER_DIR" --arch "$ARCH")
+PLATFORM=$(python3 scripts/validate_config.py platform "$LAYER_DIR" --arch "$ARCH")
 echo "  Platform: $PLATFORM"
 
 # Clean and create build directory
@@ -91,7 +91,7 @@ if [ -s "$LAYER_DIR/requirements.txt" ]; then
         --target "$BUILD_DIR/python" \
         -r "$LAYER_DIR/requirements.txt"
 else
-    echo -e "${YELLOW}  No dependencies to install${NC}"
+    echo "  ⚠ No dependencies to install"
 fi
 
 # Copy src/ contents if exists and not empty
@@ -117,4 +117,4 @@ rm -f "$LAYER_DIR/requirements.txt"
 ARTIFACT_PATH="$BUILD_DIR/dist/$ARTIFACT_NAME"
 ARTIFACT_SIZE=$(du -h "$ARTIFACT_PATH" | cut -f1)
 
-echo -e "${GREEN}✓ Built: $ARTIFACT_PATH ($ARTIFACT_SIZE)${NC}"
+echo "✅ Built: $ARTIFACT_PATH ($ARTIFACT_SIZE)"

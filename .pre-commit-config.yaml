@@ -21,6 +21,12 @@ repos:
         args: [ --fix ]
       # Run the formatter.
       - id: ruff-format
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+        args: [ --severity=warning ]
+        files: ^scripts/.*\.sh$
   - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: v1.105.0
     hooks:
@@ -43,7 +49,7 @@ repos:
         files: ^layers/.*/(pyproject\.toml|uv\.lock)$
       - id: validate-layer-config
         name: Validate layer configuration
-        entry: bash -c 'for dir in $(find layers -name "pyproject.toml" -exec dirname {} \;); do python3 scripts/validate-config.py validate "$dir" || exit 1; done'
+        entry: bash -c 'for dir in $(find layers -name "pyproject.toml" -exec dirname {} \;); do python3 scripts/layer_config.py validate "$dir" || exit 1; done'
         language: system
         pass_filenames: false
         files: ^layers/.*/pyproject\.toml$

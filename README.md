@@ -63,11 +63,11 @@ git push origin feature/mylib
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Setup Guide](docs/SETUP.md) | One-time setup: S3 bucket, GitHub config, OIDC authentication |
-| [Usage Guide](docs/USAGE.md) | Daily operations: create, build, release, deploy layers |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| Document                                   | Description                                                   |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| [Setup Guide](docs/SETUP.md)               | One-time setup: S3 bucket, GitHub config, OIDC authentication |
+| [Usage Guide](docs/USAGE.md)               | Daily operations: create, build, release, deploy layers       |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions                                   |
 
 ## Project Structure
 
@@ -81,9 +81,8 @@ aws-lambda-layers/
 ├── scripts/
 │   ├── create-layer.sh        # Scaffold new layer
 │   ├── build-layer.sh         # Build single layer variant
-│   ├── upload-layer.sh        # Upload to S3
-│   ├── check-artifacts.sh     # Verify artifacts exist in S3
-│   └── validate-config.py     # Validate layer configuration
+│   ├── layer_config.py        # Layer configuration and CI matrix building
+│   └── layer_s3.py            # S3 artifact operations (check, upload)
 ├── terraform/
 │   ├── main.tf                # aws_lambda_layer_version from S3
 │   ├── variables.tf           # layers list, artifacts_bucket
@@ -117,11 +116,11 @@ architectures = ["x86_64", "arm64"]
 platforms = { x86_64 = "x86_64-manylinux2014", arm64 = "aarch64-manylinux2014" }
 ```
 
-| Field | Description |
-|-------|-------------|
+| Field             | Description                                                     |
+| ----------------- | --------------------------------------------------------------- |
 | `python_versions` | Python versions to build (must be allowed by `requires-python`) |
-| `architectures` | CPU architectures to build (`x86_64`, `arm64`) |
-| `platforms` | Platform strings for uv pip install targeting |
+| `architectures`   | CPU architectures to build (`x86_64`, `arm64`)                  |
+| `platforms`       | Platform strings for uv pip install targeting                   |
 
 ## Build Process and Dependency Resolution
 
@@ -164,6 +163,7 @@ python_versions = ["3.11", "3.12"]  # Build for these versions
 ```
 
 The lockfile contains version-specific resolution:
+
 - If a package has different versions for Python 3.11 vs 3.12, both are recorded
 - During build, uv selects the correct version based on `--python` flag
 - This ensures reproducible builds across all Python versions from a single lockfile
@@ -218,49 +218,51 @@ flowchart TB
     style Release fill:#fafafa,stroke:#424242,stroke-width:2px
 ```
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `validate-layers.yml` | PR to `layers/**` | Validate lockfile, check S3 version, build |
-| `release-layers.yml` | Push to `main` with `layers/**` changes | Build, upload to S3, create GitHub release |
-| `release-terraform.yml` | Tag `<version>` | Release Terraform module |
+| Workflow                 | Trigger                                  | Purpose                                      |
+| ------------------------ | ---------------------------------------- | -------------------------------------------- |
+| `validate-layers.yml`    | PR to `layers/**`                        | Validate lockfile, check S3 version, build   |
+| `release-layers.yml`     | Push to `main` with `layers/**` changes  | Build, upload to S3, create GitHub release   |
+| `release-terraform.yml`  | Tag `<version>`                          | Release Terraform module                     |
 
 ## Naming Convention
 
-| Element | Format | Example |
-|---------|--------|---------|
-| Layer directory | `layers/<name>/` | `layers/common/` |
-| S3 key | `layers/<name>/<version>/py<python>-<arch>.zip` | `layers/common/1.0/py312-x86_64.zip` |
-| Lambda name | `<name>-v<version>-py<python>-<arch>` | `common-v1.0-py312-x86_64` |
-| Git tag (layer) | `layer/<name>/<version>` | `layer/common/1.0` |
-| Git tag (terraform) | `<version>` | `1.0.0` |
+| Element             | Format                                          | Example                              |
+| ------------------- | ----------------------------------------------- | ------------------------------------ |
+| Layer directory     | `layers/<name>/`                                | `layers/common/`                     |
+| S3 key              | `layers/<name>/<version>/py<python>-<arch>.zip` | `layers/common/1.0/py312-x86_64.zip` |
+| Lambda name         | `<name>-v<version>-py<python>-<arch>`           | `common-v1.0-py312-x86_64`           |
+| Git tag (layer)     | `layer/<name>/<version>`                        | `layer/common/1.0`                   |
+| Git tag (terraform) | `<version>`                                     | `1.0.0`                              |
 
 ## Versioning
 
 Layers use X.Y versioning:
 
-| Change | Version | Reason |
-|--------|---------|--------|
-| Patch dep update (2.28.1 → 2.28.2) | Keep | No API change |
-| Minor dep update (2.28 → 2.31) | Y + 1 | New features available |
-| Add new dependency | Y + 1 | New features available |
-| Major dep update (1.x → 2.x) | X + 1 | API may break |
-| Remove dependency | X + 1 | Code using it will break |
+| Change                              | Version | Reason                      |
+| ----------------------------------- | ------- | --------------------------- |
+| Patch dep update (2.28.1 → 2.28.2)  | Keep    | No API change               |
+| Minor dep update (2.28 → 2.31)      | Y + 1   | New features available      |
+| Add new dependency                  | Y + 1   | New features available      |
+| Major dep update (1.x → 2.x)        | X + 1   | API may break               |
+| Remove dependency                   | X + 1   | Code using it will break    |
 
 ## Immutability
 
 Layers are designed to be **immutable** - once released, they should never be modified:
 
-| Component | Enforcement |
-|-----------|-------------|
-| **Source** (`layers/`) | Version in Git tag, not in directory structure |
-| **Artifacts** (S3) | Upload script checks existence before upload |
-| **Lambda Layer** | New deployment creates new version number |
+| Component              | Enforcement                                      |
+| ---------------------- | ------------------------------------------------ |
+| **Source** (`layers/`) | Version in Git tag, not in directory structure   |
+| **Artifacts** (S3)     | Upload script checks existence before upload     |
+| **Lambda Layer**       | New deployment creates new version number        |
 
 ## Terraform Layer Deployment
 
 When Terraform deploys a layer to AWS, it creates an `aws_lambda_layer_version` resource. AWS Lambda assigns an internal version number (1, 2, 3...) to each layer version.
 
-**Our approach: Version in layer name, not AWS version number**
+### Version in Layer Name
+
+Our approach embeds the version in the layer name, not the AWS version number:
 
 ```text
 Layer name: common-v1.0-py312-x86_64  →  AWS version: 1
@@ -273,13 +275,13 @@ Each unique combination of name + version + python + arch creates a **separate L
 
 The standard AWS approach uses a single layer name (e.g., `common`) and increments AWS version numbers (1, 2, 3...) with each update. Our approach embeds the version in the layer name itself. Here's why:
 
-| Concern | AWS Version Approach | Our Approach (Version in Name) |
-|---------|---------------------|-------------------------------|
-| Rollback | Delete latest version, redeploy | Change version in tfvars |
-| Multi-account | Version numbers differ per account | Same layer name everywhere |
-| Audit trail | AWS versions are opaque (1, 2, 3) | Version visible in layer name |
-| Terraform state | Must track AWS version numbers | Layer name is the identifier |
-| Immutability | Can overwrite by redeploying | S3 artifact is immutable |
+| Concern         | AWS Version Approach                    | Our Approach (Version in Name)       |
+| --------------- | --------------------------------------- | ------------------------------------ |
+| Rollback        | Delete latest version, redeploy         | Change version in tfvars             |
+| Multi-account   | Version numbers differ per account      | Same layer name everywhere           |
+| Audit trail     | AWS versions are opaque (1, 2, 3)       | Version visible in layer name        |
+| Terraform state | Must track AWS version numbers          | Layer name is the identifier         |
+| Immutability    | Can overwrite by redeploying            | S3 artifact is immutable             |
 
 - **Rollback**: With AWS versions, rolling back requires deleting the latest version and redeploying. With our approach, just change `version = "1.1"` back to `version = "1.0"` in tfvars - both layers exist side by side.
 

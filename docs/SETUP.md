@@ -6,12 +6,13 @@ One-time setup for AWS Lambda Layers infrastructure.
 
 - AWS account with permissions to create S3 buckets and IAM roles
 - GitHub repository with Actions enabled
+- [Git](https://git-scm.com/) for version control and change detection
 - [uv](https://docs.astral.sh/uv/) installed locally
 - [Terraform](https://www.terraform.io/) >= 1.12.1
 - Python 3.11+ (for build scripts)
+- Python packages: `boto3`, `packaging` (for validation scripts)
 - [AWS CLI](https://aws.amazon.com/cli/) configured with credentials
 - `zip` command (usually pre-installed on Linux/macOS)
-- `jq` command for JSON processing
 
 ## S3 Artifacts Bucket
 
