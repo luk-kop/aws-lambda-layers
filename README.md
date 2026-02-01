@@ -4,16 +4,31 @@ AWS Lambda layers managed with uv and Terraform, with artifacts stored in S3.
 
 ## Architecture
 
-```text
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  layers/        │     │  S3 Bucket      │     │  AWS Lambda     │
-│  (source)       │────▶│  (artifacts)    │────▶│  (deployed)     │
-│                 │     │                 │     │                 │
-│  pyproject.toml │     │  .zip files     │     │  Layer versions │
-│  uv.lock        │     │  (immutable)    │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-     CI: build            CI: upload            Terraform: deploy
-     + validate           (once per version)   (per account)
+```mermaid
+flowchart LR
+    subgraph Source["📁 layers/"]
+        direction TB
+        S1(pyproject.toml)
+        S2(uv.lock)
+    end
+
+    subgraph Artifacts["☁️ S3 Bucket"]
+        direction TB
+        A1(".zip files")
+        A2("(immutable)")
+    end
+
+    subgraph Deployed["⚡ AWS Lambda"]
+        direction TB
+        D1("Layer versions")
+    end
+
+    Source -->|"🔨 CI: build + validate"| Artifacts
+    Artifacts -->|"🚀 Terraform: deploy"| Deployed
+
+    style Source fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b
+    style Artifacts fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100
+    style Deployed fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
 ```
 
 **Key concepts:**
@@ -95,7 +110,7 @@ Layer artifacts are stored in a shared S3 bucket. The bucket should be provision
 
 | Setting | Value | Purpose |
 |---------|-------|---------|
-| **Cross-Region Replication** | To secondary region(s) | Disaster recovery, reduced latency |
+| **Cross-Region Replication** | To secondary region(s) (optional) | Disaster recovery, reduced latency |
 | **Lifecycle Rules** | Transition to IA after 90 days | Cost optimization for old versions |
 | **Lifecycle Rules** | Delete `test/` prefix after 7 days | Cleanup test artifacts |
 | **Encryption** | SSE-S3 or SSE-KMS | Data at rest encryption |
@@ -104,16 +119,31 @@ Layer artifacts are stored in a shared S3 bucket. The bucket should be provision
 
 The bucket uses two prefixes with different purposes:
 
-```text
-s3://<bucket>/
-├── layers/                              # Release artifacts (immutable)
-│   └── <name>/<version>/
-│       ├── py312-x86_64.zip
-│       └── py312-arm64.zip
-└── test/                                # Test artifacts (7-day lifecycle)
-    └── <pr-number>/<name>/<version>/
-        ├── py312-x86_64.zip
-        └── py312-arm64.zip
+```mermaid
+flowchart TB
+    subgraph S3["☁️ s3://bucket/"]
+        direction TB
+        subgraph Layers["📦 layers/ (immutable)"]
+            direction LR
+            L1["&lt;name&gt;/&lt;version&gt;/"]
+            L2["py312-x86_64.zip"]
+            L3["py312-arm64.zip"]
+            L1 --> L2
+            L1 --> L3
+        end
+        subgraph Test["🧪 test/ (7-day lifecycle)"]
+            direction LR
+            T1["&lt;pr-number&gt;/&lt;name&gt;/&lt;version&gt;/"]
+            T2["py312-x86_64.zip"]
+            T3["py312-arm64.zip"]
+            T1 --> T2
+            T1 --> T3
+        end
+    end
+
+    style S3 fill:#fafafa,stroke:#424242,stroke-width:2px
+    style Layers fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
+    style Test fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100
 ```
 
 | Prefix | Purpose | Lifecycle |
@@ -214,20 +244,31 @@ The PR validation workflow (`validate-layers.yml`) runs when a pull request is o
 
 ```mermaid
 flowchart TB
-    subgraph PR["PR Workflow (validate-layers.yml)"]
+    subgraph PR["🔍 PR Workflow (validate-layers.yml)"]
         direction TB
-        A[PR opened/updated] --> B[Detect changed layers]
-        B --> C{Any changes?}
-        C -->|No| D[Skip - Exit success]
-        C -->|Yes| E[Lockfile check]
-        E --> F[S3 version check]
-        F --> G[Build all variants]
-        G -.-> H{Upload to test/?}
-        H -.->|Yes| I[Upload to test/PR#/]
-        H -->|No| J[Skip upload]
-        I -.-> K[PR passes]
+        A([🚀 PR opened/updated]):::trigger --> B[📋 Detect changed layers]:::detect
+        B --> C{Any changes?}:::decision
+        C -->|No| D([✅ Skip - Exit success]):::success
+        C -->|Yes| E[🔒 Lockfile check]:::validate
+        E --> F[☁️ S3 version check]:::validate
+        F --> G[🔨 Build all variants]:::build
+        G -.-> H{Upload to test/?}:::decision
+        H -.->|Yes| I[📤 Upload to test/PR#/]:::upload
+        H -->|No| J[⏭️ Skip upload]:::skip
+        I -.-> K([✅ PR passes]):::success
         J --> K
     end
+
+    classDef trigger fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    classDef detect fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef decision fill:#fff8e1,stroke:#ffa000,stroke-width:2px,color:#ff6f00
+    classDef validate fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
+    classDef build fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100
+    classDef upload fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b
+    classDef skip fill:#fafafa,stroke:#9e9e9e,stroke-width:1px,color:#616161
+    classDef success fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+
+    style PR fill:#fafafa,stroke:#424242,stroke-width:2px
 ```
 
 ### Release Workflow
@@ -236,15 +277,25 @@ The release workflow (`release-layers.yml`) runs when changes to `layers/**` are
 
 ```mermaid
 flowchart TB
-    subgraph Release["Release Workflow (release-layers.yml)"]
+    subgraph Release["🚀 Release Workflow (release-layers.yml)"]
         direction TB
-        L[Push to main] --> M[Detect changed layers]
-        M --> N{Any changes?}
-        N -->|No| O[Skip - Exit success]
-        N -->|Yes| P[Build all variants]
-        P --> Q[Upload to layers/]
-        Q --> R[Create GitHub Release]
+        L([📥 Push to main]):::trigger --> M[📋 Detect changed layers]:::detect
+        M --> N{Any changes?}:::decision
+        N -->|No| O([✅ Skip - Exit success]):::success
+        N -->|Yes| P[🔨 Build all variants]:::build
+        P --> Q[📤 Upload to layers/]:::upload
+        Q --> R([🎉 Create GitHub Release]):::release
     end
+
+    classDef trigger fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    classDef detect fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef decision fill:#fff8e1,stroke:#ffa000,stroke-width:2px,color:#ff6f00
+    classDef build fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100
+    classDef upload fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b
+    classDef success fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef release fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+
+    style Release fill:#fafafa,stroke:#424242,stroke-width:2px
 ```
 
 ### Required Repository Variables
@@ -287,6 +338,7 @@ aws iam create-open-id-connect-provider \
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
+          // Example: "repo:luk-kop/aws-lambda-layers:*"
           "token.actions.githubusercontent.com:sub": "repo:ORG/REPO:*"
         }
       }
@@ -388,14 +440,16 @@ The release workflow will:
 - Upload artifacts to S3 `layers/<name>/<version>/`
 - Create a GitHub Release with release notes
 
-### Test Build on PR (Manual)
+### Test Build on PR
 
-To test a layer build before merging:
+Test artifacts are uploaded automatically when a PR passes validation, but requires environment approval:
 
-1. Go to GitHub Actions → Test Build workflow
-2. Click "Run workflow"
-3. Enter the PR number
-4. Artifacts are uploaded to `test/<pr-number>/` in S3
+1. PR validation runs (lockfile check, S3 version check, build)
+2. Build artifacts are created for all variants
+3. The `upload-test` job waits for `test-upload` environment approval
+4. Once approved, artifacts are uploaded to `test/<pr-number>/` in S3
+
+Configure the `test-upload` environment in GitHub repository settings → Environments to require reviewers for controlled test deployments.
 
 ### Deploy with Terraform
 
@@ -452,7 +506,7 @@ resource "aws_lambda_function" "example" {
 | S3 key | `layers/<name>/<version>/py<python>-<arch>.zip` | `layers/common/1.0/py312-x86_64.zip` |
 | Lambda name | `<name>-v<version>-py<python>-<arch>` | `common-v1.0-py312-x86_64` |
 | Git tag (layer) | `layer/<name>/<version>` | `layer/common/1.0` |
-| Git tag (terraform) | `tf/<version>` | `tf/1.0.0` |
+| Git tag (terraform) | `<version>` | `1.0.0` |
 
 ## Versioning
 
