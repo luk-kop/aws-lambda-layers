@@ -166,6 +166,8 @@ Test artifacts can be uploaded to S3 for testing before merging, but requires ma
 
 Configure the `test-upload` environment in GitHub repository settings → Environments to require reviewers.
 
+**Note:** Test artifacts are mutable - uploading a new artifact with the same name and PR number replaces the previous one in S3. This causes Terraform to recreate the `aws_lambda_layer_version` resource for that test layer: the old version is deleted and a new one is created with an incremented version number. Any Lambda functions referencing the old test layer ARN will need to be updated. Production layers in `layers/` prefix are immutable and do not have this behavior.
+
 ## Deploy with Terraform
 
 ```hcl

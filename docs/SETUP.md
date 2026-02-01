@@ -69,7 +69,9 @@ flowchart TB
 | Prefix | Purpose | Lifecycle |
 |--------|---------|-----------|
 | `layers/` | Production release artifacts | Immutable, never overwritten |
-| `test/` | PR test builds | Auto-deleted after 7 days |
+| `test/` | PR test builds | Mutable, auto-deleted after 7 days |
+
+**Note:** Test artifacts can be overwritten (same name, same PR number), which affects Terraform layer versioning. See [Test Build on PR](USAGE.md#test-build-on-pr-manual) for details.
 
 ### Lifecycle Policy for Test Artifacts
 
