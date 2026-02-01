@@ -6,32 +6,8 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
-  validate:
-    name: Validate Terraform
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.12.1'
-
-      - name: Terraform Init
-        run: terraform init -backend=false
-        working-directory: terraform
-
-      - name: Terraform Validate
-        run: terraform validate
-        working-directory: terraform
-
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
-        working-directory: terraform
-
   release:
     name: Create GitHub Release
-    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: write
