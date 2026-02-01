@@ -122,7 +122,9 @@ def mixed_file_paths_strategy(draw: Callable) -> tuple[list[str], set[str]]:
     num_non_layer_paths = draw(st.integers(min_value=0, max_value=10))
     non_layer_paths = draw(
         st.lists(
-            non_layer_path_strategy, min_size=num_non_layer_paths, max_size=num_non_layer_paths
+            non_layer_path_strategy,
+            min_size=num_non_layer_paths,
+            max_size=num_non_layer_paths,
         )
     )
 
@@ -190,7 +192,9 @@ class TestChangeDetectionPathFiltering:
         )
 
     @settings(max_examples=100)
-    @given(layer_names=st.lists(layer_name_strategy, min_size=1, max_size=10, unique=True))
+    @given(
+        layer_names=st.lists(layer_name_strategy, min_size=1, max_size=10, unique=True)
+    )
     def test_unique_layer_names_returned(self, layer_names: list[str]):
         """Test that duplicate layer paths result in unique layer names.
 
@@ -349,10 +353,14 @@ class TestEdgeCases:
     @given(
         layer_name=layer_name_strategy,
         deep_path=st.lists(
-            st.from_regex(r"[a-z][a-z0-9]{0,10}", fullmatch=True), min_size=1, max_size=5
+            st.from_regex(r"[a-z][a-z0-9]{0,10}", fullmatch=True),
+            min_size=1,
+            max_size=5,
         ),
     )
-    def test_deeply_nested_paths_extract_layer_name(self, layer_name: str, deep_path: list[str]):
+    def test_deeply_nested_paths_extract_layer_name(
+        self, layer_name: str, deep_path: list[str]
+    ):
         """Test that deeply nested paths still extract the correct layer name.
 
         **Validates: Requirements 1.1 (Property 1)**

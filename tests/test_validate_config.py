@@ -144,7 +144,11 @@ class TestValidateConfig:
     def test_name_mismatch(self):
         """Test validation fails when project name doesn't match directory name."""
         config = {
-            "project": {"name": "wrong-name", "version": "1.0", "requires-python": ">=3.11"},
+            "project": {
+                "name": "wrong-name",
+                "version": "1.0",
+                "requires-python": ">=3.11",
+            },
             "tool": {
                 "lambda_layer": {
                     "python_versions": ["3.12"],
@@ -226,7 +230,11 @@ platforms = { x86_64 = "x86_64-manylinux2014" }
 """)
         matrix = get_build_matrix(tmp_path)
         assert len(matrix) == 1
-        assert matrix[0] == {"python": "3.12", "arch": "x86_64", "platform": "x86_64-manylinux2014"}
+        assert matrix[0] == {
+            "python": "3.12",
+            "arch": "x86_64",
+            "platform": "x86_64-manylinux2014",
+        }
 
     def test_multiple_variants(self, tmp_path):
         """Test build matrix with multiple Python versions and architectures."""
@@ -280,7 +288,9 @@ class TestCheckVersionExists:
     **Validates: Requirements 3.1, 3.2, 3.3**
     """
 
-    def test_check_version_exists_returns_true_when_artifacts_exist(self, tmp_path, monkeypatch):
+    def test_check_version_exists_returns_true_when_artifacts_exist(
+        self, tmp_path, monkeypatch
+    ):
         """Test that check_version_exists returns True when S3 lists objects."""
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text("""
@@ -306,7 +316,9 @@ platforms = { x86_64 = "x86_64-manylinux2014" }
 
         assert result is True
 
-    def test_check_version_exists_returns_false_when_no_artifacts(self, tmp_path, monkeypatch):
+    def test_check_version_exists_returns_false_when_no_artifacts(
+        self, tmp_path, monkeypatch
+    ):
         """Test that check_version_exists returns False when S3 returns empty."""
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text("""
@@ -332,7 +344,9 @@ platforms = { x86_64 = "x86_64-manylinux2014" }
 
         assert result is False
 
-    def test_check_version_exists_returns_false_when_s3_fails(self, tmp_path, monkeypatch):
+    def test_check_version_exists_returns_false_when_s3_fails(
+        self, tmp_path, monkeypatch
+    ):
         """Test that check_version_exists returns False when S3 command fails."""
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text("""
@@ -393,7 +407,12 @@ platforms = { x86_64 = "x86_64-manylinux2014" }
 
         # Verify the S3 path was constructed correctly
         assert len(captured_args) == 1
-        assert captured_args[0] == ["aws", "s3", "ls", "s3://my-bucket/custom-prefix/mytest/2.5/"]
+        assert captured_args[0] == [
+            "aws",
+            "s3",
+            "ls",
+            "s3://my-bucket/custom-prefix/mytest/2.5/",
+        ]
 
     def test_check_version_exists_default_prefix(self, tmp_path, monkeypatch):
         """Test that check_version_exists uses 'layers' as default prefix."""
@@ -428,4 +447,9 @@ platforms = { x86_64 = "x86_64-manylinux2014" }
 
         # Verify default prefix is "layers"
         assert len(captured_args) == 1
-        assert captured_args[0] == ["aws", "s3", "ls", "s3://test-bucket/layers/common/1.0/"]
+        assert captured_args[0] == [
+            "aws",
+            "s3",
+            "ls",
+            "s3://test-bucket/layers/common/1.0/",
+        ]

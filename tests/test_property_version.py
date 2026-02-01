@@ -178,7 +178,9 @@ class TestVersionExtractionRoundTrip:
 
     @settings(max_examples=100)
     @given(version=version_strategy, layer_name=layer_name_strategy)
-    def test_version_extraction_independent_of_layer_name(self, version: str, layer_name: str):
+    def test_version_extraction_independent_of_layer_name(
+        self, version: str, layer_name: str
+    ):
         """Test that version extraction works regardless of layer name.
 
         **Validates: Requirements 5.1 (Property 4)**
@@ -238,7 +240,8 @@ class TestVersionExtractionEdgeCases:
 
     @settings(max_examples=100)
     @given(
-        major=st.integers(min_value=0, max_value=0), minor=st.integers(min_value=0, max_value=99)
+        major=st.integers(min_value=0, max_value=0),
+        minor=st.integers(min_value=0, max_value=99),
     )
     def test_version_with_zero_major(self, major: int, minor: int):
         """Test that versions with zero major component are handled correctly.
@@ -266,7 +269,8 @@ class TestVersionExtractionEdgeCases:
 
     @settings(max_examples=100)
     @given(
-        major=st.integers(min_value=0, max_value=99), minor=st.integers(min_value=0, max_value=0)
+        major=st.integers(min_value=0, max_value=99),
+        minor=st.integers(min_value=0, max_value=0),
     )
     def test_version_with_zero_minor(self, major: int, minor: int):
         """Test that versions with zero minor component are handled correctly.
@@ -294,7 +298,8 @@ class TestVersionExtractionEdgeCases:
 
     @settings(max_examples=100)
     @given(
-        major=st.integers(min_value=10, max_value=99), minor=st.integers(min_value=10, max_value=99)
+        major=st.integers(min_value=10, max_value=99),
+        minor=st.integers(min_value=10, max_value=99),
     )
     def test_version_with_double_digit_components(self, major: int, minor: int):
         """Test that versions with double-digit components are handled correctly.
@@ -387,7 +392,9 @@ class TestVersionExtractionConsistency:
 
     @settings(max_examples=100)
     @given(version1=version_strategy, version2=version_strategy)
-    def test_different_versions_extracted_differently(self, version1: str, version2: str):
+    def test_different_versions_extracted_differently(
+        self, version1: str, version2: str
+    ):
         """Test that different versions are extracted as different values.
 
         **Validates: Requirements 5.1 (Property 4)**

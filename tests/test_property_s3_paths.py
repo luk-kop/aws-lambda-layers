@@ -19,7 +19,9 @@ from hypothesis import strategies as st
 # =============================================================================
 
 
-def format_release_s3_path(layer_name: str, version: str, python_version: str, arch: str) -> str:
+def format_release_s3_path(
+    layer_name: str, version: str, python_version: str, arch: str
+) -> str:
     """Format S3 path for release artifacts.
 
     This is a pure Python implementation of the S3 path formatting logic
@@ -151,7 +153,9 @@ class TestS3PathFormatting:
         path = format_release_s3_path(**components)
 
         # Property: Release paths must start with "layers/"
-        assert path.startswith("layers/"), f"Release path should start with 'layers/', got: {path}"
+        assert path.startswith("layers/"), (
+            f"Release path should start with 'layers/', got: {path}"
+        )
 
     @settings(max_examples=100)
     @given(components=release_path_components_strategy())
@@ -163,7 +167,9 @@ class TestS3PathFormatting:
         path = format_release_s3_path(**components)
 
         # Property: Release paths must end with ".zip"
-        assert path.endswith(".zip"), f"Release path should end with '.zip', got: {path}"
+        assert path.endswith(".zip"), (
+            f"Release path should end with '.zip', got: {path}"
+        )
 
     @settings(max_examples=100)
     @given(components=release_path_components_strategy())
@@ -210,7 +216,9 @@ class TestS3PathFormatting:
         )
 
         # Property: Path should match exact expected format
-        assert path == expected, f"Release path format mismatch.\nExpected: {expected}\nGot: {path}"
+        assert path == expected, (
+            f"Release path format mismatch.\nExpected: {expected}\nGot: {path}"
+        )
 
     @settings(max_examples=100)
     @given(components=pr_path_components_strategy())
@@ -222,7 +230,9 @@ class TestS3PathFormatting:
         path = format_test_s3_path(**components)
 
         # Property: Test paths must start with "test/"
-        assert path.startswith("test/"), f"Test path should start with 'test/', got: {path}"
+        assert path.startswith("test/"), (
+            f"Test path should start with 'test/', got: {path}"
+        )
 
     @settings(max_examples=100)
     @given(components=pr_path_components_strategy())
@@ -281,7 +291,9 @@ class TestS3PathFormatting:
         )
 
         # Property: Path should match exact expected format
-        assert path == expected, f"Test path format mismatch.\nExpected: {expected}\nGot: {path}"
+        assert path == expected, (
+            f"Test path format mismatch.\nExpected: {expected}\nGot: {path}"
+        )
 
 
 @pytest.mark.property
@@ -311,7 +323,9 @@ class TestS3PathStructure:
         )
 
         # Verify segment positions
-        assert segments[0] == "layers", f"First segment should be 'layers', got: {segments[0]}"
+        assert segments[0] == "layers", (
+            f"First segment should be 'layers', got: {segments[0]}"
+        )
         assert segments[1] == components["layer_name"], (
             f"Second segment should be layer name, got: {segments[1]}"
         )
@@ -337,7 +351,9 @@ class TestS3PathStructure:
         )
 
         # Verify segment positions
-        assert segments[0] == "test", f"First segment should be 'test', got: {segments[0]}"
+        assert segments[0] == "test", (
+            f"First segment should be 'test', got: {segments[0]}"
+        )
         assert segments[1] == str(components["pr_number"]), (
             f"Second segment should be PR number, got: {segments[1]}"
         )
@@ -371,7 +387,9 @@ class TestS3PathStructure:
         )
 
         # Property: Filename should contain the architecture
-        assert arch in filename, f"Filename should contain architecture, got: {filename}"
+        assert arch in filename, (
+            f"Filename should contain architecture, got: {filename}"
+        )
 
 
 @pytest.mark.property
@@ -392,7 +410,12 @@ class TestS3PathConsistency:
         pr_number=pr_number_strategy,
     )
     def test_release_and_test_share_same_filename(
-        self, layer_name: str, version: str, python_version: str, arch: str, pr_number: int
+        self,
+        layer_name: str,
+        version: str,
+        python_version: str,
+        arch: str,
+        pr_number: int,
     ):
         """Test that release and test paths use the same filename format.
 
@@ -402,7 +425,9 @@ class TestS3PathConsistency:
         (py<python>-<arch>.zip) for the same layer variant.
         """
         release_path = format_release_s3_path(layer_name, version, python_version, arch)
-        test_path = format_test_s3_path(pr_number, layer_name, version, python_version, arch)
+        test_path = format_test_s3_path(
+            pr_number, layer_name, version, python_version, arch
+        )
 
         release_filename = release_path.split("/")[-1]
         test_filename = test_path.split("/")[-1]
@@ -423,7 +448,12 @@ class TestS3PathConsistency:
         pr_number=pr_number_strategy,
     )
     def test_release_and_test_differ_only_in_prefix(
-        self, layer_name: str, version: str, python_version: str, arch: str, pr_number: int
+        self,
+        layer_name: str,
+        version: str,
+        python_version: str,
+        arch: str,
+        pr_number: int,
     ):
         """Test that release and test paths differ only in their prefix.
 
@@ -432,7 +462,9 @@ class TestS3PathConsistency:
         The common suffix (<name>/<version>/<filename>) should be identical.
         """
         release_path = format_release_s3_path(layer_name, version, python_version, arch)
-        test_path = format_test_s3_path(pr_number, layer_name, version, python_version, arch)
+        test_path = format_test_s3_path(
+            pr_number, layer_name, version, python_version, arch
+        )
 
         # Extract common suffix (everything after the prefix)
         release_suffix = "/".join(release_path.split("/")[1:])  # Remove "layers"
@@ -496,7 +528,9 @@ class TestS3PathEdgeCases:
         path = format_release_s3_path(layer_name, version, python_version, arch)
 
         # Property: Path should still be valid with single char layer name
-        assert f"/{layer_name}/" in path, f"Path should contain single char layer name, got: {path}"
+        assert f"/{layer_name}/" in path, (
+            f"Path should contain single char layer name, got: {path}"
+        )
 
     @settings(max_examples=100)
     @given(
@@ -515,7 +549,9 @@ class TestS3PathEdgeCases:
         path = format_release_s3_path(layer_name, version, python_version, arch)
 
         # Property: Path should contain the exact version
-        assert f"/{version}/" in path, f"Path should contain version '{version}', got: {path}"
+        assert f"/{version}/" in path, (
+            f"Path should contain version '{version}', got: {path}"
+        )
 
     @settings(max_examples=100)
     @given(pr_number=st.integers(min_value=1, max_value=1))
@@ -539,4 +575,6 @@ class TestS3PathEdgeCases:
         path = format_test_s3_path(pr_number, "common", "1.0", "312", "x86_64")
 
         # Property: Path should contain the large PR number
-        assert f"test/{pr_number}/" in path, f"Path should contain 'test/{pr_number}/', got: {path}"
+        assert f"test/{pr_number}/" in path, (
+            f"Path should contain 'test/{pr_number}/', got: {path}"
+        )

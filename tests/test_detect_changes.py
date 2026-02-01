@@ -61,7 +61,9 @@ class GitRepo:
         # Create initial commit with a README
         readme = self.path / "README.md"
         readme.write_text("# Test Repository\n")
-        subprocess.run(["git", "add", "README.md"], cwd=self.path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "README.md"], cwd=self.path, capture_output=True, check=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "Initial commit"],
             cwd=self.path,
@@ -140,7 +142,9 @@ platforms = {{ {", ".join(f'{arch} = "manylinux2014_{arch}"' for arch in archite
         if commit:
             self.commit_all(f"Modify layer {name}")
 
-    def update_layer_version(self, name: str, new_version: str, commit: bool = True) -> None:
+    def update_layer_version(
+        self, name: str, new_version: str, commit: bool = True
+    ) -> None:
         """Update the version of an existing layer.
 
         Args:
@@ -163,7 +167,9 @@ platforms = {{ {", ".join(f'{arch} = "manylinux2014_{arch}"' for arch in archite
         if commit:
             self.commit_all(f"Update layer {name} to version {new_version}")
 
-    def create_non_layer_file(self, path: str, content: str = "", commit: bool = True) -> Path:
+    def create_non_layer_file(
+        self, path: str, content: str = "", commit: bool = True
+    ) -> Path:
         """Create a file outside the layers directory.
 
         Args:
@@ -189,9 +195,14 @@ platforms = {{ {", ".join(f'{arch} = "manylinux2014_{arch}"' for arch in archite
         Args:
             message: Commit message.
         """
-        subprocess.run(["git", "add", "-A"], cwd=self.path, capture_output=True, check=True)
         subprocess.run(
-            ["git", "commit", "-m", message], cwd=self.path, capture_output=True, check=True
+            ["git", "add", "-A"], cwd=self.path, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", message],
+            cwd=self.path,
+            capture_output=True,
+            check=True,
         )
 
     def create_branch(self, name: str) -> None:
@@ -201,7 +212,10 @@ platforms = {{ {", ".join(f'{arch} = "manylinux2014_{arch}"' for arch in archite
             name: Branch name.
         """
         subprocess.run(
-            ["git", "checkout", "-b", name], cwd=self.path, capture_output=True, check=True
+            ["git", "checkout", "-b", name],
+            cwd=self.path,
+            capture_output=True,
+            check=True,
         )
 
     def checkout_branch(self, name: str) -> None:
@@ -210,7 +224,9 @@ platforms = {{ {", ".join(f'{arch} = "manylinux2014_{arch}"' for arch in archite
         Args:
             name: Branch name.
         """
-        subprocess.run(["git", "checkout", name], cwd=self.path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "checkout", name], cwd=self.path, capture_output=True, check=True
+        )
 
     def get_current_commit(self) -> str:
         """Get the current commit SHA.
@@ -219,7 +235,11 @@ platforms = {{ {", ".join(f'{arch} = "manylinux2014_{arch}"' for arch in archite
             The current commit SHA.
         """
         result = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=self.path, capture_output=True, text=True, check=True
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.path,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return result.stdout.strip()
 
@@ -359,14 +379,22 @@ class TestDetectChangesEmpty:
         exit_code, output, stderr = run_detect_changes(git_repo.path, "push")
 
         # Step 4: Verify the output
-        assert exit_code == 0, f"Script failed with exit code {exit_code}, stderr: {stderr}"
-        assert output is not None, f"Script did not produce valid JSON output, stderr: {stderr}"
+        assert exit_code == 0, (
+            f"Script failed with exit code {exit_code}, stderr: {stderr}"
+        )
+        assert output is not None, (
+            f"Script did not produce valid JSON output, stderr: {stderr}"
+        )
 
         # Verify empty layers array
-        assert output["layers"] == [], f"Expected empty layers array, got: {output['layers']}"
+        assert output["layers"] == [], (
+            f"Expected empty layers array, got: {output['layers']}"
+        )
 
         # Verify empty matrix array
-        assert output["matrix"] == [], f"Expected empty matrix array, got: {output['matrix']}"
+        assert output["matrix"] == [], (
+            f"Expected empty matrix array, got: {output['matrix']}"
+        )
 
         # Verify empty build_matrix
         assert output["build_matrix"] == {"include": []}, (
@@ -413,8 +441,12 @@ class TestDetectChangesSingle:
         exit_code, output, stderr = run_detect_changes(git_repo.path, "push")
 
         # Step 4: Verify the output
-        assert exit_code == 0, f"Script failed with exit code {exit_code}, stderr: {stderr}"
-        assert output is not None, f"Script did not produce valid JSON output, stderr: {stderr}"
+        assert exit_code == 0, (
+            f"Script failed with exit code {exit_code}, stderr: {stderr}"
+        )
+        assert output is not None, (
+            f"Script did not produce valid JSON output, stderr: {stderr}"
+        )
 
         # Verify layers array contains the changed layer
         assert output["layers"] == ["common"], (
@@ -428,7 +460,14 @@ class TestDetectChangesSingle:
 
         # Verify build_matrix contains the expected build variant
         expected_build_matrix = {
-            "include": [{"layer": "common", "version": "1.0", "python": "3.12", "arch": "x86_64"}]
+            "include": [
+                {
+                    "layer": "common",
+                    "version": "1.0",
+                    "python": "3.12",
+                    "arch": "x86_64",
+                }
+            ]
         }
         assert output["build_matrix"] == expected_build_matrix, (
             f"Expected build_matrix {expected_build_matrix}, got: {output['build_matrix']}"
@@ -483,8 +522,12 @@ class TestDetectChangesMultiple:
         exit_code, output, stderr = run_detect_changes(git_repo.path, "push")
 
         # Step 4: Verify the output
-        assert exit_code == 0, f"Script failed with exit code {exit_code}, stderr: {stderr}"
-        assert output is not None, f"Script did not produce valid JSON output, stderr: {stderr}"
+        assert exit_code == 0, (
+            f"Script failed with exit code {exit_code}, stderr: {stderr}"
+        )
+        assert output is not None, (
+            f"Script did not produce valid JSON output, stderr: {stderr}"
+        )
 
         # Verify layers array contains both changed layers (sorted alphabetically)
         assert sorted(output["layers"]) == ["common", "utils"], (
@@ -507,7 +550,9 @@ class TestDetectChangesMultiple:
         build_matrix_include = output["build_matrix"]["include"]
 
         # Extract unique layer names from build_matrix
-        build_matrix_layers = sorted(set(item["layer"] for item in build_matrix_include))
+        build_matrix_layers = sorted(
+            set(item["layer"] for item in build_matrix_include)
+        )
         assert build_matrix_layers == ["common", "utils"], (
             f"Expected build_matrix to include both layers, got: {build_matrix_layers}"
         )
@@ -587,14 +632,22 @@ class TestDetectChangesIgnoresNonLayers:
         exit_code, output, stderr = run_detect_changes(git_repo.path, "push")
 
         # Step 4: Verify the output
-        assert exit_code == 0, f"Script failed with exit code {exit_code}, stderr: {stderr}"
-        assert output is not None, f"Script did not produce valid JSON output, stderr: {stderr}"
+        assert exit_code == 0, (
+            f"Script failed with exit code {exit_code}, stderr: {stderr}"
+        )
+        assert output is not None, (
+            f"Script did not produce valid JSON output, stderr: {stderr}"
+        )
 
         # Verify empty layers array
-        assert output["layers"] == [], f"Expected empty layers array, got: {output['layers']}"
+        assert output["layers"] == [], (
+            f"Expected empty layers array, got: {output['layers']}"
+        )
 
         # Verify empty matrix array
-        assert output["matrix"] == [], f"Expected empty matrix array, got: {output['matrix']}"
+        assert output["matrix"] == [], (
+            f"Expected empty matrix array, got: {output['matrix']}"
+        )
 
         # Verify empty build_matrix
         assert output["build_matrix"] == {"include": []}, (

@@ -43,7 +43,10 @@ python_version_strategy = st.sampled_from(VALID_PYTHON_VERSIONS)
 
 # Strategy for non-empty subsets of Python versions
 python_versions_list_strategy = st.lists(
-    python_version_strategy, min_size=1, max_size=len(VALID_PYTHON_VERSIONS), unique=True
+    python_version_strategy,
+    min_size=1,
+    max_size=len(VALID_PYTHON_VERSIONS),
+    unique=True,
 )
 
 # Strategy for valid architectures (supported by Lambda)
@@ -168,7 +171,9 @@ class TestBuildMatrixGeneration:
 
             matrix = get_build_matrix(layer_dir)
 
-            expected_size = len(config["python_versions"]) * len(config["architectures"])
+            expected_size = len(config["python_versions"]) * len(
+                config["architectures"]
+            )
 
             # Property: Matrix size must equal Cartesian product size
             assert len(matrix) == expected_size, (
@@ -211,7 +216,9 @@ class TestBuildMatrixGeneration:
             )
 
             # Extract actual combinations from matrix
-            actual_combinations = set((entry["python"], entry["arch"]) for entry in matrix)
+            actual_combinations = set(
+                (entry["python"], entry["arch"]) for entry in matrix
+            )
 
             # Property: Actual combinations must match expected Cartesian product
             assert actual_combinations == expected_combinations, (
@@ -339,7 +346,9 @@ class TestBuildMatrixSpecificCases:
 
     @settings(max_examples=100)
     @given(layer_name=layer_name_strategy, version=version_strategy)
-    def test_single_python_single_arch_produces_one_entry(self, layer_name: str, version: str):
+    def test_single_python_single_arch_produces_one_entry(
+        self, layer_name: str, version: str
+    ):
         """Test that single python × single arch produces exactly 1 entry.
 
         **Validates: Requirements 5.2 (Property 5)**
@@ -349,7 +358,11 @@ class TestBuildMatrixSpecificCases:
             layer_dir.mkdir()
 
             create_pyproject_toml(
-                layer_dir, layer_name, version, python_versions=["3.12"], architectures=["x86_64"]
+                layer_dir,
+                layer_name,
+                version,
+                python_versions=["3.12"],
+                architectures=["x86_64"],
             )
 
             matrix = get_build_matrix(layer_dir)
@@ -363,7 +376,9 @@ class TestBuildMatrixSpecificCases:
 
     @settings(max_examples=100)
     @given(layer_name=layer_name_strategy, version=version_strategy)
-    def test_two_python_two_arch_produces_four_entries(self, layer_name: str, version: str):
+    def test_two_python_two_arch_produces_four_entries(
+        self, layer_name: str, version: str
+    ):
         """Test that 2 python × 2 arch produces exactly 4 entries.
 
         **Validates: Requirements 5.2 (Property 5)**
@@ -387,7 +402,9 @@ class TestBuildMatrixSpecificCases:
             matrix = get_build_matrix(layer_dir)
 
             # Property: 2 × 2 = 4 entries
-            assert len(matrix) == 4, f"Expected 4 entries for 2 python × 2 arch, got {len(matrix)}"
+            assert len(matrix) == 4, (
+                f"Expected 4 entries for 2 python × 2 arch, got {len(matrix)}"
+            )
 
             # Verify all expected combinations exist
             expected = {
@@ -404,7 +421,9 @@ class TestBuildMatrixSpecificCases:
 
     @settings(max_examples=100)
     @given(layer_name=layer_name_strategy, version=version_strategy)
-    def test_single_python_two_arch_produces_two_entries(self, layer_name: str, version: str):
+    def test_single_python_two_arch_produces_two_entries(
+        self, layer_name: str, version: str
+    ):
         """Test that 1 python × 2 arch produces exactly 2 entries.
 
         **Validates: Requirements 5.2 (Property 5)**
@@ -424,7 +443,9 @@ class TestBuildMatrixSpecificCases:
             matrix = get_build_matrix(layer_dir)
 
             # Property: 1 × 2 = 2 entries
-            assert len(matrix) == 2, f"Expected 2 entries for 1 python × 2 arch, got {len(matrix)}"
+            assert len(matrix) == 2, (
+                f"Expected 2 entries for 1 python × 2 arch, got {len(matrix)}"
+            )
 
             # Verify combinations
             expected = {("3.12", "x86_64"), ("3.12", "arm64")}
@@ -434,7 +455,9 @@ class TestBuildMatrixSpecificCases:
 
     @settings(max_examples=100)
     @given(layer_name=layer_name_strategy, version=version_strategy)
-    def test_two_python_single_arch_produces_two_entries(self, layer_name: str, version: str):
+    def test_two_python_single_arch_produces_two_entries(
+        self, layer_name: str, version: str
+    ):
         """Test that 2 python × 1 arch produces exactly 2 entries.
 
         **Validates: Requirements 5.2 (Property 5)**
@@ -454,7 +477,9 @@ class TestBuildMatrixSpecificCases:
             matrix = get_build_matrix(layer_dir)
 
             # Property: 2 × 1 = 2 entries
-            assert len(matrix) == 2, f"Expected 2 entries for 2 python × 1 arch, got {len(matrix)}"
+            assert len(matrix) == 2, (
+                f"Expected 2 entries for 2 python × 1 arch, got {len(matrix)}"
+            )
 
             # Verify combinations
             expected = {("3.11", "x86_64"), ("3.12", "x86_64")}
@@ -509,7 +534,9 @@ class TestBuildMatrixConsistency:
 
     @settings(max_examples=100)
     @given(config1=matrix_config_strategy(), config2=matrix_config_strategy())
-    def test_different_configs_produce_different_matrices(self, config1: dict, config2: dict):
+    def test_different_configs_produce_different_matrices(
+        self, config1: dict, config2: dict
+    ):
         """Test that different configurations produce different matrices.
 
         **Validates: Requirements 5.2 (Property 5)**
@@ -576,14 +603,22 @@ class TestBuildMatrixConsistency:
             layer_dir1 = Path(tmp_dir) / "layer1"
             layer_dir1.mkdir()
             create_pyproject_toml(
-                layer_dir1, "layer1", "1.0", config["python_versions"], config["architectures"]
+                layer_dir1,
+                "layer1",
+                "1.0",
+                config["python_versions"],
+                config["architectures"],
             )
 
             # Create layer with version 99.99
             layer_dir2 = Path(tmp_dir) / "layer2"
             layer_dir2.mkdir()
             create_pyproject_toml(
-                layer_dir2, "layer2", "99.99", config["python_versions"], config["architectures"]
+                layer_dir2,
+                "layer2",
+                "99.99",
+                config["python_versions"],
+                config["architectures"],
             )
 
             matrix1 = get_build_matrix(layer_dir1)

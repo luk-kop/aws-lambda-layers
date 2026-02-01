@@ -77,7 +77,9 @@ def validate_config(config: dict, layer_name: str) -> list[str]:
     required_fields = ["python_versions", "architectures", "platforms"]
     for field in required_fields:
         if field not in layer_config:
-            errors.append(f"{layer_name}: Missing required field '{field}' in [tool.lambda_layer]")
+            errors.append(
+                f"{layer_name}: Missing required field '{field}' in [tool.lambda_layer]"
+            )
 
     if errors:
         return errors
@@ -105,7 +107,9 @@ def validate_config(config: dict, layer_name: str) -> list[str]:
     # Validate platforms has entries for all architectures
     for arch in layer_config["architectures"]:
         if arch not in layer_config["platforms"]:
-            errors.append(f"{layer_name}: Missing platform mapping for architecture '{arch}'")
+            errors.append(
+                f"{layer_name}: Missing platform mapping for architecture '{arch}'"
+            )
 
     return errors
 
@@ -142,7 +146,13 @@ def get_build_matrix(layer_dir: Path) -> list[dict]:
     matrix = []
     for py in layer_config["python_versions"]:
         for arch in layer_config["architectures"]:
-            matrix.append({"python": py, "arch": arch, "platform": layer_config["platforms"][arch]})
+            matrix.append(
+                {
+                    "python": py,
+                    "arch": arch,
+                    "platform": layer_config["platforms"][arch],
+                }
+            )
     return matrix
 
 
@@ -176,7 +186,9 @@ def check_version_exists(layer_dir: Path, bucket: str, prefix: str = "layers") -
 
     # Use AWS CLI to check if any objects exist
     result = subprocess.run(
-        ["aws", "s3", "ls", f"s3://{bucket}/{s3_prefix}"], capture_output=True, text=True
+        ["aws", "s3", "ls", f"s3://{bucket}/{s3_prefix}"],
+        capture_output=True,
+        text=True,
     )
     return result.returncode == 0 and result.stdout.strip() != ""
 
@@ -185,14 +197,17 @@ def main():
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(description="Validate layer configuration")
     parser.add_argument(
-        "command", choices=["validate", "platform", "matrix", "version", "check-version"]
+        "command",
+        choices=["validate", "platform", "matrix", "version", "check-version"],
     )
     parser.add_argument("layer_dir", type=Path)
     parser.add_argument("--arch", help="Architecture for platform lookup")
     parser.add_argument("--python", help="Python version to validate")
     parser.add_argument("--bucket", help="S3 bucket name for version check")
     parser.add_argument(
-        "--prefix", default="layers", help="S3 prefix for version check (default: layers)"
+        "--prefix",
+        default="layers",
+        help="S3 prefix for version check (default: layers)",
     )
 
     args = parser.parse_args()
