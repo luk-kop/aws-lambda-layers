@@ -7,8 +7,6 @@
 #   ├── pyproject.toml     # Dependencies and [tool.lambda_layer] config
 #   ├── uv.lock            # Locked dependency versions
 #   └── src/               # Optional custom Python code
-#
-# Requirements: 2.1
 
 set -euo pipefail
 

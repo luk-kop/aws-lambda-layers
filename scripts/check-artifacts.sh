@@ -8,8 +8,6 @@
 # Exit codes:
 #   0 - All artifacts found
 #   1 - Some artifacts missing or error
-#
-# Requirements: 6.1
 
 set -euo pipefail
 

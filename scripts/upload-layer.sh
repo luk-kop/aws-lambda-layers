@@ -5,8 +5,6 @@
 # Uploads built layer artifacts to S3 with immutability enforcement.
 # For release artifacts (prefix=layers), existing artifacts cannot be overwritten.
 # For test artifacts (prefix=test/*), overwrites are allowed.
-#
-# Requirements: 2.6, 2.7, 7.1, 7.2
 
 set -euo pipefail
 

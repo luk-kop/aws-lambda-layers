@@ -4,8 +4,6 @@
 #
 # Builds a Lambda layer ZIP artifact for a specific Python version and architecture.
 # Reference: https://docs.astral.sh/uv/guides/integration/aws-lambda/#deploying-a-zip-archive
-#
-# Requirements: 2.2, 2.3, 2.4, 2.5
 
 set -euo pipefail
 

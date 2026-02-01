@@ -24,8 +24,6 @@
 # Exit codes:
 #   0 - Success
 #   1 - Error
-#
-# Validates: Requirements 1.1, 1.2, 5.1, 5.2
 
 set -euo pipefail
 

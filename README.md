@@ -1,5 +1,11 @@
 # AWS Lambda Layers
 
+[![Validate Layers](https://github.com/luk-kop/aws-lambda-layers/actions/workflows/validate-layers.yml/badge.svg)](https://github.com/luk-kop/aws-lambda-layers/actions/workflows/validate-layers.yml)
+[![Release Layers](https://github.com/luk-kop/aws-lambda-layers/actions/workflows/release-layers.yml/badge.svg)](https://github.com/luk-kop/aws-lambda-layers/actions/workflows/release-layers.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Terraform 1.12+](https://img.shields.io/badge/terraform-1.12%2B-purple.svg)](https://www.terraform.io/)
+[![uv](https://img.shields.io/badge/uv-package%20manager-green.svg)](https://docs.astral.sh/uv/)
+
 AWS Lambda layers managed with uv and Terraform, with artifacts stored in S3.
 
 ## Architecture
@@ -8,19 +14,19 @@ AWS Lambda layers managed with uv and Terraform, with artifacts stored in S3.
 flowchart LR
     subgraph Source["📁 layers/"]
         direction TB
-        S1(pyproject.toml)
-        S2(uv.lock)
+        S1[pyproject.toml]
+        S2[uv.lock]
     end
 
     subgraph Artifacts["☁️ S3 Bucket"]
         direction TB
-        A1(".zip files")
-        A2("(immutable)")
+        A1[".zip files"]
+        A2["(immutable)"]
     end
 
     subgraph Deployed["⚡ AWS Lambda"]
         direction TB
-        D1("Layer versions")
+        D1["Layer versions"]
     end
 
     Source -->|"🔨 CI: build + validate"| Artifacts
@@ -37,6 +43,31 @@ flowchart LR
 - **Artifacts** (S3) - Built zip files, immutable, shared across accounts
 - **Deployed** (Lambda) - Layer versions deployed per AWS account
 - **Version in pyproject.toml** - Layer version is defined in `pyproject.toml`, auto-detected on merge to main
+
+## Quick Start
+
+```bash
+# Create a new layer
+./scripts/create-layer.sh mylib
+
+# Add dependencies
+cd layers/mylib
+uv add requests boto3
+
+# Release (commit, PR, merge to main)
+git add .
+git commit -m "mylib: initial release"
+git push origin feature/mylib
+# Create PR → merge → CI builds and publishes automatically
+```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Setup Guide](docs/SETUP.md) | One-time setup: S3 bucket, GitHub config, OIDC authentication |
+| [Usage Guide](docs/USAGE.md) | Daily operations: create, build, release, deploy layers |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
 
 ## Project Structure
 
@@ -60,10 +91,8 @@ aws-lambda-layers/
 │   ├── providers.tf           # AWS provider config
 │   └── versions.tf            # Terraform/provider versions
 └── .github/workflows/
-    ├── validate.yml           # Validate on push/PR
     ├── validate-layers.yml    # PR validation (lockfile, S3 version, build)
     ├── release-layers.yml     # Auto-detect release on push to main
-    ├── test-build.yml         # Manual test builds for PRs
     └── release-terraform.yml  # Terraform module release
 ```
 
@@ -85,7 +114,7 @@ dependencies = [
 [tool.lambda_layer]
 python_versions = ["3.11", "3.12"]
 architectures = ["x86_64", "arm64"]
-platforms = { x86_64 = "manylinux2014_x86_64", arm64 = "manylinux2014_aarch64" }
+platforms = { x86_64 = "x86_64-manylinux2014", arm64 = "aarch64-manylinux2014" }
 ```
 
 | Field | Description |
@@ -94,409 +123,106 @@ platforms = { x86_64 = "manylinux2014_x86_64", arm64 = "manylinux2014_aarch64" }
 | `architectures` | CPU architectures to build (`x86_64`, `arm64`) |
 | `platforms` | Platform strings for uv pip install targeting |
 
-## S3 Artifacts Bucket
+## Build Process and Dependency Resolution
 
-Layer artifacts are stored in a shared S3 bucket. The bucket should be provisioned separately (e.g., by a shared infrastructure Terraform component).
+The build process uses [uv](https://docs.astral.sh/uv/) to resolve and install dependencies for Lambda's Linux environment.
 
-### Required Bucket Configuration
-
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| **Versioning** | Enabled | Track artifact history, enable recovery |
-| **Object Lock** | GOVERNANCE mode (optional) | Enforce immutability (prevent overwrites/deletes) |
-| **Bucket Policy** | Cross-account read | Allow target accounts to read artifacts |
-
-### Recommended Bucket Configuration
-
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| **Cross-Region Replication** | To secondary region(s) (optional) | Disaster recovery, reduced latency |
-| **Lifecycle Rules** | Transition to IA after 90 days | Cost optimization for old versions |
-| **Lifecycle Rules** | Delete `test/` prefix after 7 days | Cleanup test artifacts |
-| **Encryption** | SSE-S3 or SSE-KMS | Data at rest encryption |
-
-### S3 Key Structure
-
-The bucket uses two prefixes with different purposes:
+### How It Works
 
 ```mermaid
-flowchart TB
-    subgraph S3["☁️ s3://bucket/"]
-        direction TB
-        subgraph Layers["📦 layers/ (immutable)"]
-            direction LR
-            L1["&lt;name&gt;/&lt;version&gt;/"]
-            L2["py312-x86_64.zip"]
-            L3["py312-arm64.zip"]
-            L1 --> L2
-            L1 --> L3
-        end
-        subgraph Test["🧪 test/ (7-day lifecycle)"]
-            direction LR
-            T1["&lt;pr-number&gt;/&lt;name&gt;/&lt;version&gt;/"]
-            T2["py312-x86_64.zip"]
-            T3["py312-arm64.zip"]
-            T1 --> T2
-            T1 --> T3
-        end
+flowchart LR
+    subgraph Local["💻 Local Development"]
+        A[pyproject.toml] -->|"uv lock"| B[uv.lock]
     end
 
-    style S3 fill:#fafafa,stroke:#424242,stroke-width:2px
-    style Layers fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
-    style Test fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100
+    subgraph Build["🔨 CI Build"]
+        B -->|"uv export --frozen"| C[requirements.txt]
+        C -->|"uv pip install --python-platform"| D[python/]
+        D -->|"zip"| E[layer.zip]
+    end
+
+    style Local fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style Build fill:#fff3e0,stroke:#f57c00,stroke-width:2px
 ```
 
-| Prefix | Purpose | Lifecycle |
-|--------|---------|-----------|
-| `layers/` | Production release artifacts | Immutable, never overwritten |
-| `test/` | PR test builds | Auto-deleted after 7 days |
+1. **Lock dependencies** (`uv lock`) - Creates `uv.lock` with pinned versions. Run locally when adding/updating dependencies.
 
-### Lifecycle Policy for Test Artifacts
+2. **Export requirements** (`uv export --frozen`) - Converts lockfile to `requirements.txt` during build. The `--frozen` flag ensures exact versions from lockfile are used.
 
-Configure a lifecycle rule to automatically clean up test artifacts:
+3. **Install for target platform** (`uv pip install --python-platform`) - Downloads wheels for Lambda's Linux environment, even when building on macOS or Windows.
 
-```json
-{
-  "Rules": [
-    {
-      "ID": "DeleteTestArtifacts",
-      "Status": "Enabled",
-      "Filter": {
-        "Prefix": "test/"
-      },
-      "Expiration": {
-        "Days": 7
-      }
-    }
-  ]
-}
+### One Lockfile, Multiple Python Versions
+
+uv's lockfile supports multiple Python versions simultaneously. When you run `uv lock`, it resolves dependencies for all Python versions allowed by `requires-python`:
+
+```toml
+[project]
+requires-python = ">=3.11"  # Allows 3.11, 3.12, 3.13, etc.
+
+[tool.lambda_layer]
+python_versions = ["3.11", "3.12"]  # Build for these versions
 ```
 
-### Example Bucket Policy (Cross-Account Read)
+The lockfile contains version-specific resolution:
+- If a package has different versions for Python 3.11 vs 3.12, both are recorded
+- During build, uv selects the correct version based on `--python` flag
+- This ensures reproducible builds across all Python versions from a single lockfile
 
-**Option 1: Allow entire AWS Organization**
+### Cross-Platform Building
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AllowOrganizationRead",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectVersion"
-      ],
-      "Resource": "arn:aws:s3:::BUCKET_NAME/*",
-      "Condition": {
-        "StringEquals": {
-          "aws:PrincipalOrgID": "o-xxxxxxxxxx"
-        }
-      }
-    }
-  ]
-}
+The `--python-platform` flag tells uv to download wheels for Lambda's Linux environment:
+
+```bash
+uv pip install \
+    --python-platform "x86_64-manylinux2014" \
+    --python "3.12" \
+    --target ".build/python" \
+    -r requirements.txt
 ```
 
-**Option 2: Allow specific AWS accounts**
+This means you can build Lambda layers on any OS (macOS, Windows, Linux) and get the correct Linux-compatible wheels.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AllowSpecificAccountsRead",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": [
-          "arn:aws:iam::111111111111:root",
-          "arn:aws:iam::222222222222:root"
-        ]
-      },
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectVersion"
-      ],
-      "Resource": "arn:aws:s3:::BUCKET_NAME/*"
-    }
-  ]
-}
-```
+### Build Optimizations
 
-## GitHub Actions CI/CD
+The build script applies several optimizations to reduce layer size:
 
-### Workflows
+- `--no-installer-metadata` - Removes pip metadata files
+- `--no-compile-bytecode` - Skips `.pyc` generation (Lambda compiles on first run)
+- Cleanup of `__pycache__`, `*.dist-info`, and `*.pyc` files
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `validate.yml` | Push/PR to `layers/**` | Validate lockfiles and configs |
-| `validate-layers.yml` | PR to `layers/**` | PR validation: lockfile check, S3 version check, build |
-| `release-layers.yml` | Push to `main` with `layers/**` changes | Auto-detect and release changed layers |
-| `test-build.yml` | Manual (workflow_dispatch) | Test build for PRs |
-| `release-terraform.yml` | Tag `tf/<version>` | Validate and release Terraform module |
-
-The layer release process uses **auto-detection**: when changes to `layers/**` are merged to main, the CI automatically detects which layers changed, builds all variants, uploads to S3, and creates GitHub releases.
-
-### PR Validation Workflow
-
-The PR validation workflow (`validate-layers.yml`) runs when a pull request is opened or updated with changes to `layers/**`:
+## CI/CD Workflows
 
 ```mermaid
 flowchart TB
-    subgraph PR["🔍 PR Workflow (validate-layers.yml)"]
+    subgraph PR["🔍 PR Workflow"]
         direction TB
-        A([🚀 PR opened/updated]):::trigger --> B[📋 Detect changed layers]:::detect
-        B --> C{Any changes?}:::decision
-        C -->|No| D([✅ Skip - Exit success]):::success
-        C -->|Yes| E[🔒 Lockfile check]:::validate
-        E --> F[☁️ S3 version check]:::validate
-        F --> G[🔨 Build all variants]:::build
-        G -.-> H{Upload to test/?}:::decision
-        H -.->|Yes| I[📤 Upload to test/PR#/]:::upload
-        H -->|No| J[⏭️ Skip upload]:::skip
-        I -.-> K([✅ PR passes]):::success
-        J --> K
+        A([PR opened]) --> B[Detect changes]
+        B --> C[Validate lockfile]
+        C --> D[Check S3 version]
+        D --> E[Build all variants]
+        E -.-> F[Upload to test/]
+    end
+
+    subgraph Release["🚀 Release Workflow"]
+        direction TB
+        G([Push to main]) --> H[Detect changes]
+        H --> I[Build all variants]
+        I --> J[Upload to layers/]
+        J --> K([GitHub Release])
     end
 
     classDef trigger fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
-    classDef detect fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
-    classDef decision fill:#fff8e1,stroke:#ffa000,stroke-width:2px,color:#ff6f00
-    classDef validate fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
-    classDef build fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100
-    classDef upload fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b
-    classDef skip fill:#fafafa,stroke:#9e9e9e,stroke-width:1px,color:#616161
     classDef success fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
 
     style PR fill:#fafafa,stroke:#424242,stroke-width:2px
-```
-
-### Release Workflow
-
-The release workflow (`release-layers.yml`) runs when changes to `layers/**` are pushed to the main branch:
-
-```mermaid
-flowchart TB
-    subgraph Release["🚀 Release Workflow (release-layers.yml)"]
-        direction TB
-        L([📥 Push to main]):::trigger --> M[📋 Detect changed layers]:::detect
-        M --> N{Any changes?}:::decision
-        N -->|No| O([✅ Skip - Exit success]):::success
-        N -->|Yes| P[🔨 Build all variants]:::build
-        P --> Q[📤 Upload to layers/]:::upload
-        Q --> R([🎉 Create GitHub Release]):::release
-    end
-
-    classDef trigger fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
-    classDef detect fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
-    classDef decision fill:#fff8e1,stroke:#ffa000,stroke-width:2px,color:#ff6f00
-    classDef build fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100
-    classDef upload fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b
-    classDef success fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
-    classDef release fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
-
     style Release fill:#fafafa,stroke:#424242,stroke-width:2px
 ```
 
-### Required Repository Variables
-
-Configure these in GitHub repository settings → Secrets and variables → Actions → Variables:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `LAMBDA_LAYERS_BUCKET` | S3 bucket for artifacts | `my-lambda-layers` |
-| `AWS_REGION` | AWS region for deployment | `eu-west-1` |
-| `AWS_ROLE_ARN` | IAM role ARN for OIDC auth | `arn:aws:iam::123456789012:role/github-actions` |
-
-### OIDC Authentication Setup
-
-GitHub Actions uses OIDC (OpenID Connect) to authenticate with AWS without long-lived credentials.
-
-**Step 1: Create IAM Identity Provider**
-
-```bash
-aws iam create-open-id-connect-provider \
-  --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
-```
-
-**Step 2: Create IAM Role with Trust Policy**
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          // Example: "repo:luk-kop/aws-lambda-layers:*"
-          "token.actions.githubusercontent.com:sub": "repo:ORG/REPO:*"
-        }
-      }
-    }
-  ]
-}
-```
-
-**Step 3: Attach S3 Permissions to Role**
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::BUCKET_NAME",
-        "arn:aws:s3:::BUCKET_NAME/*"
-      ]
-    }
-  ]
-}
-```
-
-For detailed instructions, see [GitHub Actions OIDC with AWS](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services).
-
-## Procedures
-
-### Create a New Layer
-
-```bash
-./scripts/create-layer.sh <name>
-
-# Example:
-./scripts/create-layer.sh utils
-```
-
-This creates:
-- `layers/<name>/pyproject.toml` - Template configuration
-- `layers/<name>/uv.lock` - Initial lockfile
-- `layers/<name>/src/` - Directory for custom code
-
-### Add Dependencies
-
-```bash
-cd layers/<name>
-uv add requests boto3-stubs
-```
-
-If you edit `pyproject.toml` manually, regenerate the lockfile:
-
-```bash
-uv lock
-```
-
-### Build Layer Locally
-
-```bash
-./scripts/build-layer.sh <name> <python> <arch>
-
-# Example:
-./scripts/build-layer.sh common 3.12 x86_64
-```
-
-Output: `.build/<name>/dist/py<python>-<arch>.zip`
-
-### Release a Layer
-
-Layers are released automatically when changes are merged to main. The CI detects which layers changed, builds all variants, uploads to S3, and creates GitHub releases.
-
-1. Update version in `pyproject.toml`
-2. Update lockfile if needed: `cd layers/<name> && uv lock`
-3. Commit changes and create a pull request
-4. PR validation runs automatically (lockfile check, S3 version check, build)
-5. Get PR reviewed and approved
-6. Merge to main - CI automatically detects changes, builds, and publishes
-
-```bash
-# Example workflow:
-cd layers/common
-# Edit pyproject.toml: version = "1.1"
-uv lock
-git add .
-git commit -m "common: bump to 1.1"
-git push origin feature/common-1.1
-# Create PR, get review, merge
-```
-
-The release workflow will:
-
-- Detect which layers changed in the merge commit
-- Build all variants defined in `[tool.lambda_layer]`
-- Upload artifacts to S3 `layers/<name>/<version>/`
-- Create a GitHub Release with release notes
-
-### Test Build on PR
-
-Test artifacts are uploaded automatically when a PR passes validation, but requires environment approval:
-
-1. PR validation runs (lockfile check, S3 version check, build)
-2. Build artifacts are created for all variants
-3. The `upload-test` job waits for `test-upload` environment approval
-4. Once approved, artifacts are uploaded to `test/<pr-number>/` in S3
-
-Configure the `test-upload` environment in GitHub repository settings → Environments to require reviewers for controlled test deployments.
-
-### Deploy with Terraform
-
-```hcl
-# terraform.tfvars
-artifacts_bucket = "my-lambda-layers"
-
-layers = [
-  { name = "common", version = "1.0", python = "312", arch = "x86_64" }
-]
-```
-
-```bash
-cd terraform
-terraform init
-terraform apply
-```
-
-### Deploy Test Layers (from PR)
-
-Use the `s3_prefix` parameter to deploy test artifacts:
-
-```hcl
-# terraform.tfvars - Deploy test layer from PR #123
-layers = [
-  {
-    name      = "common"
-    version   = "1.0"
-    python    = "312"
-    arch      = "x86_64"
-    s3_prefix = "test/123"  # Points to test artifacts
-  }
-]
-```
-
-This allows testing layer changes in a target AWS account before merging the PR.
-
-### Use Layer in Lambda
-
-Reference the layer ARN from Terraform outputs:
-
-```hcl
-resource "aws_lambda_function" "example" {
-  # ...
-  layers = [module.layers.layer_arns["common-v1.0-py312-x86_64"]]
-}
-```
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `validate-layers.yml` | PR to `layers/**` | Validate lockfile, check S3 version, build |
+| `release-layers.yml` | Push to `main` with `layers/**` changes | Build, upload to S3, create GitHub release |
+| `release-terraform.yml` | Tag `<version>` | Release Terraform module |
 
 ## Naming Convention
 
@@ -530,116 +256,40 @@ Layers are designed to be **immutable** - once released, they should never be mo
 | **Artifacts** (S3) | Upload script checks existence before upload |
 | **Lambda Layer** | New deployment creates new version number |
 
-## Troubleshooting
+## Terraform Layer Deployment
 
-### Missing Artifact in S3
+When Terraform deploys a layer to AWS, it creates an `aws_lambda_layer_version` resource. AWS Lambda assigns an internal version number (1, 2, 3...) to each layer version.
 
-If Terraform fails with `NoSuchKey` error:
+**Our approach: Version in layer name, not AWS version number**
 
-```bash
-# Check if artifact exists
-./scripts/check-artifacts.sh <name> <version> <bucket>
-
-# Example:
-./scripts/check-artifacts.sh common 1.0 my-lambda-layers
+```text
+Layer name: common-v1.0-py312-x86_64  →  AWS version: 1
+Layer name: common-v1.1-py312-x86_64  →  AWS version: 1  (different layer)
 ```
 
-**Scenario 1: CI build failed after tag was pushed**
+Each unique combination of name + version + python + arch creates a **separate Lambda layer** in AWS. Since S3 artifacts are immutable, the AWS version number is always 1 - the artifact never changes after release.
 
-```bash
-# Delete and recreate the tag to trigger CI rebuild
-git tag -d layer/<name>/<version>
-git push origin :refs/tags/layer/<name>/<version>
-git tag layer/<name>/<version>
-git push origin --tags
-```
+### Why this approach?
 
-**Scenario 2: Tag exists but was never pushed**
+The standard AWS approach uses a single layer name (e.g., `common`) and increments AWS version numbers (1, 2, 3...) with each update. Our approach embeds the version in the layer name itself. Here's why:
 
-```bash
-git push origin layer/<name>/<version>
-```
+| Concern | AWS Version Approach | Our Approach (Version in Name) |
+|---------|---------------------|-------------------------------|
+| Rollback | Delete latest version, redeploy | Change version in tfvars |
+| Multi-account | Version numbers differ per account | Same layer name everywhere |
+| Audit trail | AWS versions are opaque (1, 2, 3) | Version visible in layer name |
+| Terraform state | Must track AWS version numbers | Layer name is the identifier |
+| Immutability | Can overwrite by redeploying | S3 artifact is immutable |
 
-**Scenario 3: Need to rebuild with updated dependencies**
+- **Rollback**: With AWS versions, rolling back requires deleting the latest version and redeploying. With our approach, just change `version = "1.1"` back to `version = "1.0"` in tfvars - both layers exist side by side.
 
-```bash
-# Update version in pyproject.toml
-# Edit layers/<name>/pyproject.toml: version = "X.Y+1"
+- **Multi-account**: If you deploy to dev first, then prod, AWS assigns version numbers independently. Dev might have versions 1-5, prod has 1-3. With our approach, `common-v1.0-py312-x86_64` is the same everywhere.
 
-# Update lockfile
-cd layers/<name>
-uv lock
+- **Audit trail**: When a Lambda uses layer version 3, you need to check AWS to see what that contains. With our approach, `common-v1.0-py312-x86_64` tells you exactly what version is deployed.
 
-# Commit and create new tag
-git add layers/<name>/
-git commit -m "<name>: bump to X.Y+1"
-git tag layer/<name>/X.Y+1
-git push origin main --tags
-```
+- **Terraform state**: AWS version numbers are assigned at deploy time, so Terraform must query AWS to know the current version. With our approach, the layer name is deterministic from the configuration.
 
-### Re-running Failed CI Build
-
-If CI build failed due to transient error:
-
-1. Go to GitHub Actions → Release Layer workflow
-2. Find the failed run for your tag
-3. Click "Re-run all jobs"
-
-Note: Re-running will fail if artifacts already exist in S3 (immutability check).
-
-### Lockfile Out of Date
-
-If validation fails with lockfile error:
-
-```bash
-cd layers/<name>
-uv lock
-git add uv.lock
-git commit -m "<name>: update lockfile"
-```
-
-### Python Version Not Allowed
-
-If validation fails with Python version error, ensure `python_versions` in `[tool.lambda_layer]` are allowed by `requires-python`:
-
-```toml
-# Wrong: 3.10 not allowed by >=3.11
-requires-python = ">=3.11"
-[tool.lambda_layer]
-python_versions = ["3.10", "3.12"]  # Error!
-
-# Correct
-requires-python = ">=3.11"
-[tool.lambda_layer]
-python_versions = ["3.11", "3.12"]  # OK
-```
-
-### Verifying Layer Deployment
-
-After Terraform apply:
-
-```bash
-# List layer versions
-aws lambda list-layer-versions --layer-name <layer-name>
-
-# Get layer ARN from Terraform output
-cd terraform
-terraform output layer_arns
-```
-
-## Pre-commit Hooks
-
-Install pre-commit hooks to validate before committing:
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
-Hooks validate:
-- `uv.lock` files are up-to-date
-- Layer configurations are valid
-- Terraform formatting
+- **Immutability**: With AWS versions, redeploying the same layer name creates a new version, potentially with different content. With our approach, `common-v1.0` always points to the same immutable S3 artifact.
 
 ## References
 
