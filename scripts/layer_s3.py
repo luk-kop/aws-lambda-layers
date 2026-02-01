@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Shared S3 utility (previously duplicated in check_artifacts.py and upload_layer.py)
+# Shared S3 utility
 # =============================================================================
 
 
@@ -75,11 +75,6 @@ def s3_object_exists(s3_client: S3Client, bucket: str, key: str) -> bool:
         if e.response["Error"]["Code"] == "404":
             return False
         raise
-
-
-# =============================================================================
-# Functions from check_artifacts.py
-# =============================================================================
 
 
 def check_artifacts(
@@ -185,11 +180,6 @@ def check_version_exists(
     s3_client = boto3.client("s3")
     response = s3_client.list_objects_v2(Bucket=bucket, Prefix=s3_prefix, MaxKeys=1)
     return response.get("KeyCount", 0) > 0
-
-
-# =============================================================================
-# Functions from upload_layer.py
-# =============================================================================
 
 
 def get_file_size_human(path: Path) -> str:

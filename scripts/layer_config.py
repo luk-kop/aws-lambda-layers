@@ -45,11 +45,6 @@ logger = logging.getLogger(__name__)
 LAYERS_DIR = Path("layers")
 
 
-# =============================================================================
-# Functions from validate_config.py
-# =============================================================================
-
-
 def load_config(layer_dir: Path) -> dict:
     """Load and parse pyproject.toml.
 
@@ -192,11 +187,6 @@ def get_version(layer_dir: Path) -> str:
     """
     config = load_config(layer_dir)
     return config["project"]["version"]
-
-
-# =============================================================================
-# Functions from build_matrix.py
-# =============================================================================
 
 
 def extract_layer_names(paths: list[str]) -> list[str]:
