@@ -140,6 +140,12 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: artifacts
+          merge-multiple: false
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f -name "*.zip" || echo "No artifacts found"
 
       - name: Publish artifacts to S3
         id: publish
@@ -172,19 +178,23 @@ jobs:
             BUILD_DIR=".build/${LAYER}/dist"
             mkdir -p "$BUILD_DIR"
 
-            # Move artifact to expected location
+            # Try both possible locations (v7 behavior varies)
             if [ -f "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" ]; then
               cp "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" "$BUILD_DIR/"
-
-              # Upload to layers/ prefix (immutability enforced by layer_s3.py)
-              python ./scripts/layer_s3.py upload "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" --prefix "layers"
-
-              # Clean up for next iteration
-              rm -rf ".build/${LAYER}"
+            elif [ -f "artifacts/${ARTIFACT_FILE}" ]; then
+              cp "artifacts/${ARTIFACT_FILE}" "$BUILD_DIR/"
             else
-              echo "::error::Artifact not found: artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}"
+              echo "::error::Artifact not found: ${ARTIFACT_NAME}/${ARTIFACT_FILE}"
+              echo "Available files:"
+              find artifacts -type f -name "*.zip"
               exit 1
             fi
+
+            # Upload to layers/ prefix (immutability enforced by layer_s3.py)
+            python ./scripts/layer_s3.py upload "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" --prefix "layers"
+
+            # Clean up for next iteration
+            rm -rf ".build/${LAYER}"
 
             echo ""
           done
