@@ -182,20 +182,20 @@ jobs:
             ARCH=$(echo "$entry" | jq -r '.arch')
 
             PYTHON_SHORT="${PYTHON//./}"
-            ARTIFACT_NAME="${LAYER}-${VERSION}-py${PYTHON_SHORT}-${ARCH}"
             ARTIFACT_FILE="py${PYTHON_SHORT}-${ARCH}.zip"
 
-            echo "Processing: $ARTIFACT_NAME"
+            echo "Processing: $LAYER v$VERSION ($ARTIFACT_FILE)"
 
             BUILD_DIR=".build/${LAYER}/dist"
             mkdir -p "$BUILD_DIR"
 
-            if [ -f "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" ]; then
-              cp "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" "$BUILD_DIR/"
+            # Artifact is directly in artifacts/ folder (no subfolder)
+            if [ -f "artifacts/${ARTIFACT_FILE}" ]; then
+              cp "artifacts/${ARTIFACT_FILE}" "$BUILD_DIR/"
               ./scripts/upload-layer.sh "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" "test/${PR_NUMBER}"
               rm -rf ".build/${LAYER}"
             else
-              echo "::error::Artifact not found: artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}"
+              echo "::error::Artifact not found: artifacts/${ARTIFACT_FILE}"
               exit 1
             fi
           done
