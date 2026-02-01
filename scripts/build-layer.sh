@@ -60,15 +60,15 @@ fi
 
 echo "Building layer: $LAYER_NAME (Python $PYTHON_VERSION, $ARCH)"
 
-# Validate configuration using validate_config.py
+# Validate configuration using layer_config.py
 echo "  Validating configuration..."
-if ! python3 scripts/validate_config.py validate "$LAYER_DIR"; then
+if ! python3 scripts/layer_config.py validate "$LAYER_DIR"; then
     echo "❌ ERROR: Configuration validation failed"
     exit 1
 fi
 
 # Get platform from config
-PLATFORM=$(python3 scripts/validate_config.py platform "$LAYER_DIR" --arch "$ARCH")
+PLATFORM=$(python3 scripts/layer_config.py platform "$LAYER_DIR" --arch "$ARCH")
 echo "  Platform: $PLATFORM"
 
 # Clean and create build directory

@@ -8,10 +8,10 @@ If Terraform fails with `NoSuchKey` error:
 
 ```bash
 # Check if all artifacts exist for a version
-python scripts/check_artifacts.py check <name> <version> <bucket>
+python scripts/layer_s3.py check <name> <version> <bucket>
 
 # Example:
-python scripts/check_artifacts.py check common 1.0 my-lambda-layers
+python scripts/layer_s3.py check common 1.0 my-lambda-layers
 ```
 
 ### Scenario 1: CI release failed after merge to main
@@ -105,7 +105,7 @@ If `build-layer.sh` fails:
 3. Check the layer has valid configuration:
 
 ```bash
-python scripts/validate_config.py validate layers/<name>
+python scripts/layer_config.py validate layers/<name>
 ```
 
 ## Terraform Can't Find Layer
