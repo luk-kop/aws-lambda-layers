@@ -3,7 +3,8 @@ name: Release Terraform Module
 on:
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+'      # stable releases (e.g., 1.0.0)
+      - '[0-9]+.[0-9]+.[0-9]+-rc*'  # RC releases (e.g., 1.0.0-rc1)
 
 jobs:
   release:
