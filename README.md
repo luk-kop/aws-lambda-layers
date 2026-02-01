@@ -223,8 +223,9 @@ flowchart TB
 | Workflow                 | Trigger                                  | Purpose                                      |
 | ------------------------ | ---------------------------------------- | -------------------------------------------- |
 | `validate-layers.yml`    | PR to `layers/**`                        | Validate lockfile, check S3 version, build   |
+| `validate-terraform.yml` | PR to `terraform/**`                     | Validate, format check, TFLint, security scan|
 | `release-layers.yml`     | Push to `main` with `layers/**` changes  | Build, upload to S3, create GitHub release   |
-| `release-terraform.yml`  | Tag `<version>`                          | Release Terraform module                     |
+| `release-terraform.yml`  | Tag `X.Y.Z` or `X.Y.Z-rc*`               | Release Terraform module                     |
 
 ## Naming Convention
 
