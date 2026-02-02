@@ -152,6 +152,17 @@ flowchart LR
 
 3. **Install for target platform** (`uv pip install --python-platform`) - Downloads wheels for Lambda's Linux environment, even when building on macOS or Windows.
 
+### Dependency Versioning
+
+Dependencies in `pyproject.toml` use version constraints (e.g., `requests>=2.32`), while `uv.lock` contains exact pinned versions:
+
+| File | Example | Purpose |
+|------|---------|---------|
+| `pyproject.toml` | `requests>=2.32` | Minimum required version |
+| `uv.lock` | `requests==2.32.3` | Exact version for reproducible builds |
+
+When you run `uv add requests`, it adds a constraint like `>=2.32` and locks the latest compatible version. The build always uses the exact version from the lockfile, ensuring reproducibility.
+
 ### One Lockfile, Multiple Python Versions
 
 The uv's lockfile supports multiple Python versions simultaneously. When you run `uv lock`, it resolves dependencies for all Python versions allowed by `requires-python`:
@@ -239,13 +250,16 @@ flowchart TB
 
 ## Naming Convention
 
-| Element             | Format                                          | Example                              |
-| ------------------- | ----------------------------------------------- | ------------------------------------ |
-| Layer directory     | `layers/<name>/`                                | `layers/common/`                     |
-| S3 key              | `layers/<name>/<version>/py<python>-<arch>.zip` | `layers/common/1.0/py312-x86_64.zip` |
-| Lambda name         | `<name>-v<version>-py<python>-<arch>`           | `common-v1.0-py312-x86_64`           |
-| Git tag (layer)     | `layer/<name>/<version>`                        | `layer/common/1.0`                   |
-| Git tag (terraform) | `<version>`                                     | `1.0.0`                              |
+| Element             | Format                                          | Example                               |
+| ------------------- | ----------------------------------------------- | ------------------------------------- |
+| Layer directory     | `layers/<name>/`                                | `layers/common/`                      |
+| S3 key              | `layers/<name>/<version>/py<python>-<arch>.zip` | `layers/common/1.0/py312-x86_64.zip`  |
+| Lambda name         | `<name>-v<version>-py<python>-<arch>`           | `common-v1_0-py312-x86_64`            |
+| Git tag (terraform) | `<version>`                                     | `1.0.0`                               |
+
+> **Note**: Lambda layer names use underscore instead of dot in version (`v1_0` not `v1.0`) for AWS compatibility.
+
+Git tags for layers (`layer/<name>/<version>`) are created automatically by CI after successful release. They are informational only and do not trigger builds — releases are triggered by merging changes to main.
 
 ## Versioning
 
@@ -256,8 +270,10 @@ Layers use X.Y versioning:
 | Patch dep update (2.28.1 → 2.28.2)  | Keep    | No API change               |
 | Minor dep update (2.28 → 2.31)      | Y + 1   | New features available      |
 | Add new dependency                  | Y + 1   | New features available      |
+| Add Python version or architecture  | Y + 1   | New variants available      |
 | Major dep update (1.x → 2.x)        | X + 1   | API may break               |
 | Remove dependency                   | X + 1   | Code using it will break    |
+| Remove Python version or arch       | X + 1   | Existing Lambdas may break  |
 
 ## Immutability
 

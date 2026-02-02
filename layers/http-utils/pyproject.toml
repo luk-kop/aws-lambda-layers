@@ -1,12 +1,12 @@
 [project]
 name = "http-utils"
-version = "1.0"
+version = "1.1"
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.32",
 ]
 
 [tool.lambda_layer]
-python_versions = ["3.12"]
+python_versions = ["3.11", "3.12"]
 architectures = ["x86_64"]
 platforms = { x86_64 = "x86_64-manylinux2014", arm64 = "aarch64-manylinux2014" }
