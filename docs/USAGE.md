@@ -403,6 +403,46 @@ build-layer:
     - ./scripts/build-layer.sh $VARIANT_LAYER $VARIANT_PYTHON $VARIANT_ARCH
 ```
 
+## Running Tests
+
+### Setup Virtual Environment
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+```
+
+### Install Dependencies
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Run All Tests
+
+```bash
+pytest tests/
+```
+
+### Run with Verbose Output
+
+```bash
+pytest tests/ -v
+```
+
+### Run Specific Test File
+
+```bash
+pytest tests/test_layer_config.py
+```
+
+### Test Structure
+
+- `tests/test_layer_config.py` - Unit tests for layer configuration parsing
+- `tests/test_layer_s3.py` - Unit tests for S3 operations (mocked)
+- `tests/test_property_*.py` - Property-based tests using Hypothesis
+
 ## Next Steps
 
 If you encounter issues, see [Troubleshooting Guide](TROUBLESHOOTING.md).
