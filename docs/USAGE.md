@@ -126,6 +126,57 @@ git add .
 git commit -m "<name>: remove Python 3.11 support (breaking)"
 ```
 
+## Delete a Layer
+
+Deleting a layer is a multi-step process. The order matters to avoid breaking Lambda functions.
+
+### Step 1: Remove from Terraform
+
+Remove the layer from `terraform.tfvars` in all environments:
+
+```hcl
+# Before
+layers = [
+  { name = "common", version = "1.0", python = "312", arch = "x86_64" },
+  { name = "utils", version = "1.0", python = "312", arch = "x86_64" },  # Remove this
+]
+
+# After
+layers = [
+  { name = "common", version = "1.0", python = "312", arch = "x86_64" },
+]
+```
+
+### Step 2: Apply Terraform
+
+```bash
+cd terraform
+terraform apply
+```
+
+This removes the `aws_lambda_layer_version` from AWS. Any Lambda functions still referencing this layer will fail on next deploy.
+
+### Step 3: Remove from repository
+
+```bash
+rm -rf layers/<name>
+git add -A
+git commit -m "chore: remove <name> layer"
+git push
+```
+
+CI will detect the deleted layer and skip it (with a warning).
+
+### Step 4: (Optional) Clean up S3
+
+S3 artifacts are immutable and can be left in place - they don't cost much and don't interfere with anything. If you want to clean up:
+
+```bash
+aws s3 rm s3://<bucket>/layers/<name>/ --recursive
+```
+
+**Warning:** Only delete from S3 after confirming no environment references this layer.
+
 ## Release a Layer
 
 Layers are released automatically when changes are merged to main. The CI detects which layers changed, builds all variants, uploads to S3, and creates GitHub releases.

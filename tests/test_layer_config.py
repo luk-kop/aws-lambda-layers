@@ -422,6 +422,49 @@ class TestBuildOutput:
         assert output["matrix"][0]["name"] == "common"
         assert "version" in output["matrix"][0]
 
+    def test_build_output_skips_deleted_layer(self, tmp_path, monkeypatch):
+        """Test that deleted layers (no directory) are skipped silently."""
+        # Point LAYERS_DIR to tmp_path (no layers exist)
+        monkeypatch.setattr("layer_config.LAYERS_DIR", tmp_path)
+
+        output = build_output(["nonexistent"])
+
+        assert output["layers"] == []
+        assert output["has_changes"] is False
+
+    def test_build_output_errors_on_missing_pyproject(self, tmp_path, monkeypatch):
+        """Test that existing dir without pyproject.toml raises error."""
+        # Create layer directory without pyproject.toml
+        layer_dir = tmp_path / "broken"
+        layer_dir.mkdir()
+
+        monkeypatch.setattr("layer_config.LAYERS_DIR", tmp_path)
+
+        with pytest.raises(FileNotFoundError, match="missing pyproject.toml"):
+            build_output(["broken"])
+
+    def test_build_output_errors_on_missing_lockfile(self, tmp_path, monkeypatch):
+        """Test that existing dir without uv.lock raises error."""
+        # Create layer directory with pyproject.toml but no uv.lock
+        layer_dir = tmp_path / "nolockfile"
+        layer_dir.mkdir()
+        (layer_dir / "pyproject.toml").write_text("""
+[project]
+name = "nolockfile"
+version = "1.0"
+requires-python = ">=3.11"
+
+[tool.lambda_layer]
+python_versions = ["3.12"]
+architectures = ["x86_64"]
+platforms = { x86_64 = "x86_64-manylinux2014" }
+""")
+
+        monkeypatch.setattr("layer_config.LAYERS_DIR", tmp_path)
+
+        with pytest.raises(FileNotFoundError, match="missing uv.lock"):
+            build_output(["nolockfile"])
+
 
 class TestStdinModeEmpty:
     """Tests for empty stdin input."""

@@ -238,6 +238,9 @@ def build_output(layers: list[str]) -> dict:
     Returns:
         Dictionary with layers, matrix, build_matrix, and has_changes fields.
         matrix and build_matrix are plain arrays (CI-agnostic).
+
+    Raises:
+        FileNotFoundError: If layer directory exists but missing required files
     """
     if not layers:
         return {
@@ -249,10 +252,31 @@ def build_output(layers: list[str]) -> dict:
 
     matrix = []
     build_matrix_items = []
+    valid_layers = []
 
     for layer in layers:
         layer_dir = LAYERS_DIR / layer
+        pyproject = layer_dir / "pyproject.toml"
+        lockfile = layer_dir / "uv.lock"
+
+        # Layer directory deleted entirely = skip with warning
+        if not layer_dir.exists():
+            logger.warning(f"Layer '{layer}' deleted, skipping")
+            continue
+
+        # Directory exists but missing required files = error
+        if not pyproject.exists():
+            raise FileNotFoundError(
+                f"Layer '{layer}' exists but missing pyproject.toml"
+            )
+
+        if not lockfile.exists():
+            raise FileNotFoundError(
+                f"Layer '{layer}' exists but missing uv.lock. Run: cd layers/{layer} && uv lock"
+            )
+
         version = get_version(layer_dir)
+        valid_layers.append(layer)
 
         matrix.append({"name": layer, "version": version})
 
@@ -265,10 +289,10 @@ def build_output(layers: list[str]) -> dict:
             )
 
     return {
-        "layers": layers,
+        "layers": valid_layers,
         "matrix": matrix,
         "build_matrix": build_matrix_items,
-        "has_changes": True,
+        "has_changes": len(valid_layers) > 0,
     }
 
 
