@@ -4,8 +4,13 @@ One-time setup for AWS Lambda Layers infrastructure.
 
 ## Prerequisites
 
+### Infrastructure
+
 - AWS account with permissions to create S3 buckets and IAM roles
 - GitHub repository with Actions enabled
+
+### Local Development
+
 - [Git](https://git-scm.com/) for version control and change detection
 - [uv](https://docs.astral.sh/uv/) installed locally
 - [Terraform](https://www.terraform.io/) >= 1.12.1
@@ -13,6 +18,12 @@ One-time setup for AWS Lambda Layers infrastructure.
 - Python packages: `boto3`, `packaging` (for validation scripts)
 - [AWS CLI](https://aws.amazon.com/cli/) configured with credentials
 - `zip` command (usually pre-installed on Linux/macOS)
+
+### Testing
+
+- [pytest](https://pytest.org/) for running tests
+- [hypothesis](https://hypothesis.readthedocs.io/) for property-based tests
+- Install all test dependencies: `pip install -r requirements-dev.txt`
 
 ## S3 Artifacts Bucket
 
@@ -243,46 +254,6 @@ Hooks validate:
 - `uv.lock` files are up-to-date
 - Layer configurations are valid
 - Terraform formatting
-
-## Running Tests
-
-### Setup Virtual Environment
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
-```
-
-### Install Dependencies
-
-```bash
-pip install -r requirements-dev.txt
-```
-
-### Run All Tests
-
-```bash
-pytest tests/
-```
-
-### Run with Verbose Output
-
-```bash
-pytest tests/ -v
-```
-
-### Run Specific Test File
-
-```bash
-pytest tests/test_layer_config.py
-```
-
-### Test Structure
-
-- `tests/test_layer_config.py` - Unit tests for layer configuration parsing
-- `tests/test_layer_s3.py` - Unit tests for S3 operations (mocked)
-- `tests/test_property_*.py` - Property-based tests using Hypothesis
 
 ## Next Steps
 

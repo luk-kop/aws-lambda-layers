@@ -41,8 +41,8 @@ flowchart LR
 
 - **Source** (`layers/`) - Layer definitions with dependencies in flat structure
 - **Artifacts** (S3) - Built zip files, immutable, shared across accounts
-- **Deployed** (Lambda) - Layer versions deployed per AWS account
-- **Version in pyproject.toml** - Layer version is defined in `pyproject.toml`, auto-detected on merge to main
+- **Lambda Layers** (AWS) - Layer versions created per AWS account
+- **Version in pyproject.toml** - Layer version is defined in `pyproject.toml`, auto-detected on merge to **main** branch
 
 ## Quick Start
 
@@ -154,7 +154,7 @@ flowchart LR
 
 ### One Lockfile, Multiple Python Versions
 
-uv's lockfile supports multiple Python versions simultaneously. When you run `uv lock`, it resolves dependencies for all Python versions allowed by `requires-python`:
+The uv's lockfile supports multiple Python versions simultaneously. When you run `uv lock`, it resolves dependencies for all Python versions allowed by `requires-python`:
 
 ```toml
 [project]
@@ -166,27 +166,25 @@ python_versions = ["3.11", "3.12"]  # Build for these versions
 
 The lockfile contains version-specific resolution:
 
-- If a package has different versions for Python 3.11 vs 3.12, both are recorded
+- If a package has different versions for Python 3.11 vs 3.12, both are recorded with `requires-python` markers
 - During build, uv selects the correct version based on `--python` flag
 - This ensures reproducible builds across all Python versions from a single lockfile
 
 ### Cross-Platform Building
 
-The `--python-platform` flag tells uv to download wheels for Lambda's Linux environment:
+The `--python-platform` flag tells uv to download wheels for Lambda's Linux environment, so you can build layers on any OS (macOS, Windows, Linux):
 
 ```bash
 uv pip install \
+    --no-installer-metadata \
+    --no-compile-bytecode \
     --python-platform "x86_64-manylinux2014" \
     --python "3.12" \
     --target ".build/python" \
     -r requirements.txt
 ```
 
-This means you can build Lambda layers on any OS (macOS, Windows, Linux) and get the correct Linux-compatible wheels.
-
-### Build Optimizations
-
-The build script applies several optimizations to reduce layer size:
+The build script also applies optimizations to reduce layer size:
 
 - `--no-installer-metadata` - Removes pip metadata files
 - `--no-compile-bytecode` - Skips `.pyc` generation (Lambda compiles on first run)
@@ -196,36 +194,48 @@ The build script applies several optimizations to reduce layer size:
 
 ```mermaid
 flowchart TB
-    subgraph PR["🔍 PR Workflow"]
+    subgraph Push["⚡ Push"]
         direction TB
-        A([PR opened]) --> B[Detect changes]
-        B --> C[Validate lockfile]
-        C --> D[Check S3 version]
-        D --> E[Build all variants]
-        E -.-> F[Upload to test/]
+        P1([Push to layers/]) --> P2[Validate lockfile]
+        P2 --> P3[Validate config]
     end
 
-    subgraph Release["🚀 Release Workflow"]
+    subgraph PR["🔍 PR"]
+        direction TB
+        A([PR opened]) --> B[Detect changes]
+        B --> C[Check S3 version]
+        C --> D[Build variants]
+        D -.-> E[Upload to test/]
+    end
+
+    subgraph Release["🚀 Release"]
         direction TB
         G([Push to main]) --> H[Detect changes]
-        H --> I[Build all variants]
+        H --> I[Build variants]
         I --> J[Upload to layers/]
         J --> K([GitHub Release])
     end
 
-    classDef trigger fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
-    classDef success fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    subgraph Manual["🔧 Manual"]
+        direction TB
+        M1([workflow_dispatch]) --> M2[Build variants]
+        M2 --> M3[Upload to test/]
+    end
 
-    style PR fill:#fafafa,stroke:#424242,stroke-width:2px
-    style Release fill:#fafafa,stroke:#424242,stroke-width:2px
+    style Push fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style PR fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style Release fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style Manual fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
 ```
 
 | Workflow                 | Trigger                                  | Purpose                                      |
 | ------------------------ | ---------------------------------------- | -------------------------------------------- |
-| `validate-layers.yml`    | PR to `layers/**`                        | Validate lockfile, check S3 version, build   |
+| `check-layers.yml`       | Push to `layers/**`                      | Quick validation: lockfile sync, config      |
+| `validate-layers.yml`    | PR to `layers/**`                        | Full validation: S3 version check, build     |
 | `validate-terraform.yml` | PR to `terraform/**`                     | Validate, format check, TFLint, security scan|
 | `release-layers.yml`     | Push to `main` with `layers/**` changes  | Build, upload to S3, create GitHub release   |
 | `release-terraform.yml`  | Tag `X.Y.Z` or `X.Y.Z-rc*`               | Release Terraform module                     |
+| `test-build.yml`         | Manual (`workflow_dispatch`)             | Build and upload test artifacts on demand    |
 
 ## Naming Convention
 
@@ -255,7 +265,7 @@ Layers are designed to be **immutable** - once released, they should never be mo
 
 | Component              | Enforcement                                      |
 | ---------------------- | ------------------------------------------------ |
-| **Source** (`layers/`) | Version in Git tag, not in directory structure   |
+| **Source** (`layers/`) | Version in `pyproject.toml`, Git tag created after release |
 | **Artifacts** (S3)     | Upload script checks existence before upload     |
 | **Lambda Layer**       | New deployment creates new version number        |
 
@@ -273,6 +283,17 @@ Layer name: common-v1.1-py312-x86_64  →  AWS version: 1  (different layer)
 ```
 
 Each unique combination of name + version + python + arch creates a **separate Lambda layer** in AWS. Since S3 artifacts are immutable, the AWS version number is always 1 - the artifact never changes after release.
+
+### AWS Version Number Behavior
+
+AWS assigns monotonically increasing version numbers that are never reused, even after deletion and recreation ([docs](https://docs.aws.amazon.com/lambda/latest/dg/configuration-versions.html)). This means:
+
+- If you deploy `common-v1_0-py312-x86_64` → AWS assigns version 1
+- If you delete it and redeploy the same layer → AWS assigns version 2, not 1
+
+**Why this doesn't affect us**: Our approach uses the layer name as the identifier, not the AWS version number. The layer ARN we reference includes the name we control (`common-v1_0-py312-x86_64`), and the underlying S3 artifact is immutable. Whether AWS internally assigns version 1, 2, or 99 is irrelevant — the layer always contains the same code from the same S3 ZIP.
+
+This is actually another advantage of embedding version in the name: we're completely decoupled from AWS's internal versioning behavior.
 
 ### Why this approach?
 
