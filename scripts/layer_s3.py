@@ -6,7 +6,10 @@ Provides utilities for checking and uploading layer artifacts to S3.
 CLI Usage:
     layer_s3.py check <name> <version> <bucket> [--prefix PREFIX]
     layer_s3.py version-exists <name> <version> <bucket> [--prefix PREFIX]
-    layer_s3.py upload <name> <version> <bucket> [--prefix PREFIX] [--dry-run]
+    layer_s3.py upload <name> <version> <bucket> --prefix PREFIX [--dry-run]
+
+Note: For upload, --prefix should be the full S3 path (e.g., "layers/common/1.0" or
+"test/common/1.0/abc123f"). The script only appends the filename.
 
 Public Functions:
     s3_object_exists(s3_client, bucket: str, key: str) -> bool
@@ -248,11 +251,11 @@ def upload_layer(
 
     for zip_file in sorted(zip_files):
         filename = zip_file.name
-        s3_key = f"{prefix}/{name}/{version}/{filename}"
+        s3_key = f"{prefix}/{filename}"
         s3_path = f"s3://{bucket}/{s3_key}"
 
-        # Check immutability for release artifacts (prefix=RELEASE_PREFIX)
-        if prefix == RELEASE_PREFIX:
+        # Check immutability for release artifacts (prefix starts with RELEASE_PREFIX)
+        if prefix.startswith(RELEASE_PREFIX):
             if s3_object_exists(s3_client, bucket, s3_key):
                 logger.error(f"  ✗ {filename} - ALREADY EXISTS")
                 logger.error(f"    Cannot overwrite immutable artifact: {s3_path}")
@@ -321,9 +324,10 @@ def main() -> int:
 Examples:
   %(prog)s check common 1.0 my-bucket
   %(prog)s version-exists common 1.0 my-bucket
-  %(prog)s version-exists common 1.0 my-bucket --prefix test/123
-  %(prog)s upload common 1.0 my-bucket
-  %(prog)s upload common 1.0 my-bucket --prefix test/123 --dry-run
+  %(prog)s version-exists common 1.0 my-bucket --prefix test/common/1.0/abc123f
+  %(prog)s upload common 1.0 my-bucket --prefix layers/common/1.0
+  %(prog)s upload common 1.0 my-bucket --prefix test/common/1.0/abc123f
+  %(prog)s upload common 1.0 my-bucket --prefix layers/common/1.0 --dry-run
 """,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

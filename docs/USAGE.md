@@ -155,6 +155,52 @@ The release workflow will:
 - Upload artifacts to S3 `layers/<name>/<version>/`
 - Create a GitHub Release with release notes
 
+### GitHub Release Contents
+
+Each release includes:
+
+- Layer name and version
+- Dependencies list from `pyproject.toml`
+- Build variants (Python versions, architectures)
+- Commit history since last release
+- Terraform usage snippet
+- S3 artifact location
+
+Example release body:
+
+```
+## Lambda Layer Release
+
+**Layer:** common
+**Version:** 1.1
+
+### Dependencies
+
+- requests>=2.31
+- boto3>=1.34
+
+### Build Variants
+
+- Python 3.12, x86_64
+- Python 3.12, arm64
+
+### Changes
+
+- feat: add new utility function
+- fix: handle edge case in parser
+
+### Usage (Terraform)
+
+layers = [
+  { name = "common", version = "1.1", python = "312", arch = "x86_64" }
+]
+
+### S3 Artifacts
+
+Artifacts are available at:
+s3://my-lambda-layers/layers/common/1.1/
+```
+
 ## Test Build on PR
 
 Test artifacts are uploaded to S3 automatically on each push to a PR:
@@ -166,6 +212,26 @@ Test artifacts are uploaded to S3 automatically on each push to a PR:
 5. CI posts a comment on the PR with the Terraform snippet and expiry date
 
 Configure the `test-upload` environment in GitHub repository settings → Environments to require reviewers.
+
+### Example CI Comment
+
+After successful upload, CI adds a comment to the PR:
+
+```
+✅ Test artifacts uploaded
+
+Commit: abc123f
+
+Use in Terraform:
+
+test_layers = [
+  { name = "common", version = "1.0", python = "312", arch = "x86_64", commit = "abc123f" }
+]
+
+⚠️ These artifacts will be automatically deleted on 2026-02-09 14:32 UTC
+```
+
+Each new push updates the comment with the new commit SHA and expiry date.
 
 **Note:** Each commit creates a new test artifact with a unique path (`test/<name>/<version>/<commit>/...`). This ensures multiple testers can safely test different commits from the same PR without overwriting each other's artifacts. Test artifacts are automatically deleted after 7 days.
 

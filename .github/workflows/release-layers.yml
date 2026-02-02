@@ -191,7 +191,8 @@ jobs:
             fi
 
             # Upload to layers/ prefix (immutability enforced by layer_s3.py)
-            python ./scripts/layer_s3.py upload "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" --prefix "layers"
+            python ./scripts/layer_s3.py upload "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" \
+              --prefix "layers/${LAYER}/${VERSION}"
 
             # Clean up for next iteration
             rm -rf ".build/${LAYER}"

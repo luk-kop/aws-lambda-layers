@@ -237,7 +237,8 @@ jobs:
               exit 1
             fi
 
-            python ./scripts/layer_s3.py upload "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" --prefix "test/${LAYER}/${VERSION}/${SHORT_SHA}"
+            python ./scripts/layer_s3.py upload "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" \
+              --prefix "test/${LAYER}/${VERSION}/${SHORT_SHA}"
             rm -rf ".build/${LAYER}"
           done
 
