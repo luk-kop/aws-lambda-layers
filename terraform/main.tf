@@ -13,15 +13,15 @@ locals {
   }
 
   # Build test layer configs
-  # layer_key: "test-42-common-v1_0-py312-x86_64" (dot replaced with underscore for AWS compatibility)
-  # s3_key: "test/42/common/1.0/py312-x86_64.zip"
+  # layer_key: "test-common-v1_0-abc123f-py312-x86_64" (dot replaced with underscore for AWS compatibility)
+  # s3_key: "test/common/1.0/abc123f/py312-x86_64.zip"
   test_layer_configs = {
-    for l in var.test_layers : "test-${l.pr}-${l.name}-v${replace(l.version, ".", "_")}-py${l.python}-${l.arch}" => {
+    for l in var.test_layers : "test-${l.name}-v${replace(l.version, ".", "_")}-${l.commit}-py${l.python}-${l.arch}" => {
       name    = l.name
       version = l.version
       python  = l.python
       arch    = l.arch
-      s3_key  = "test/${l.pr}/${l.name}/${l.version}/py${l.python}-${l.arch}.zip"
+      s3_key  = "test/${l.name}/${l.version}/${l.commit}/py${l.python}-${l.arch}.zip"
     }
   }
 

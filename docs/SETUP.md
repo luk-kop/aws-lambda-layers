@@ -53,7 +53,7 @@ flowchart TB
         end
         subgraph Test["🧪 test/ (7-day lifecycle)"]
             direction LR
-            T1["&lt;pr-number&gt;/&lt;name&gt;/&lt;version&gt;/"]
+            T1["&lt;name&gt;/&lt;version&gt;/&lt;commit&gt;/"]
             T2["py312-x86_64.zip"]
             T3["py312-arm64.zip"]
             T1 --> T2
@@ -69,9 +69,9 @@ flowchart TB
 | Prefix | Purpose | Lifecycle |
 |--------|---------|-----------|
 | `layers/` | Production release artifacts | Immutable, never overwritten |
-| `test/` | PR test builds | Mutable, auto-deleted after 7 days |
+| `test/` | Test builds (per commit) | Immutable per commit, auto-deleted after 7 days |
 
-**Note:** Test artifacts can be overwritten (same name, same PR number), which affects Terraform layer versioning. See [Test Build on PR](USAGE.md#test-build-on-pr-manual) for details.
+**Note:** Each commit creates a unique test artifact path (`test/<name>/<version>/<commit>/`), so multiple testers can safely test different commits from the same PR without conflicts.
 
 ### Lifecycle Policy for Test Artifacts
 

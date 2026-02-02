@@ -155,18 +155,19 @@ The release workflow will:
 - Upload artifacts to S3 `layers/<name>/<version>/`
 - Create a GitHub Release with release notes
 
-## Test Build on PR (Manual)
+## Test Build on PR
 
-Test artifacts can be uploaded to S3 for testing before merging, but requires manual approval:
+Test artifacts are uploaded to S3 automatically on each push to a PR:
 
 1. PR validation runs automatically (lockfile check, S3 version check, build)
 2. Build artifacts are created for all variants
 3. The `upload-test` job waits for `test-upload` environment approval
-4. Approve the environment in GitHub Actions to upload artifacts to `test/<pr-number>/` in S3
+4. Approve the environment in GitHub Actions to upload artifacts
+5. CI posts a comment on the PR with the Terraform snippet and expiry date
 
 Configure the `test-upload` environment in GitHub repository settings → Environments to require reviewers.
 
-**Note:** Test artifacts are mutable - uploading a new artifact with the same name and PR number replaces the previous one in S3. This causes Terraform to recreate the `aws_lambda_layer_version` resource for that test layer: the old version is deleted and a new one is created with an incremented version number. Any Lambda functions referencing the old test layer ARN will need to be updated. Production layers in `layers/` prefix are immutable and do not have this behavior.
+**Note:** Each commit creates a new test artifact with a unique path (`test/<name>/<version>/<commit>/...`). This ensures multiple testers can safely test different commits from the same PR without overwriting each other's artifacts. Test artifacts are automatically deleted after 7 days.
 
 ## Deploy with Terraform
 
@@ -179,7 +180,7 @@ layers = [
   { name = "common", version = "1.0", python = "312", arch = "x86_64" }
 ]
 
-# Test layers (from test/<pr>/ S3 prefix) - typically empty in prod
+# Test layers (from test/<name>/<version>/<commit>/ S3 prefix) - typically empty in prod
 test_layers = []
 ```
 
@@ -191,14 +192,14 @@ terraform apply
 
 ## Deploy Test Layers (from PR)
 
-Use the `test_layers` variable to deploy test artifacts:
+Use the `test_layers` variable to deploy test artifacts. Copy the snippet from the CI comment on your PR:
 
 ```hcl
-# terraform.tfvars - Deploy test layer from PR #123
+# terraform.tfvars - Deploy test layer from commit abc123f
 layers = []
 
 test_layers = [
-  { name = "common", version = "1.0", python = "312", arch = "x86_64", pr = "123" }
+  { name = "common", version = "1.0", python = "312", arch = "x86_64", commit = "abc123f" }
 ]
 ```
 
@@ -218,7 +219,7 @@ resource "aws_lambda_function" "example" {
 resource "aws_lambda_function" "test_example" {
   # ...
   # Test layer
-  layers = [module.layers.test_layer_arns["test-123-common-v1_0-py312-x86_64"]]
+  layers = [module.layers.test_layer_arns["test-common-v1_0-abc123f-py312-x86_64"]]
 }
 ```
 

@@ -61,13 +61,13 @@ variable "layers" {
 }
 
 variable "test_layers" {
-  description = "List of test Lambda layers to deploy (from test/<pr>/ S3 prefix)"
+  description = "List of test Lambda layers to deploy (from test/<name>/<version>/<commit>/ S3 prefix)"
   type = list(object({
     name    = string # e.g., "common" or "common-utils"
     version = string # e.g., "1.0" (dot notation for flat structure)
     python  = string # e.g., "312" (no dot)
     arch    = string # "x86_64" or "arm64"
-    pr      = string # PR number, maps to test/<pr>/ S3 prefix
+    commit  = string # Short commit SHA, maps to test/<name>/<version>/<commit>/ S3 prefix
   }))
   default = []
 
@@ -101,8 +101,8 @@ variable "test_layers" {
 
   validation {
     condition = alltrue([
-      for l in var.test_layers : can(regex("^[0-9]+$", l.pr))
+      for l in var.test_layers : can(regex("^[a-f0-9]{7,40}$", l.commit))
     ])
-    error_message = "PR number must contain only digits."
+    error_message = "Commit must be a valid short or full git SHA (7-40 hex characters)."
   }
 }
