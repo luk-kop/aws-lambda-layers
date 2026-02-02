@@ -4,12 +4,6 @@ on:
   pull_request:
     paths:
       - 'layers/**'
-  workflow_dispatch:
-    inputs:
-      upload_test:
-        description: 'Upload artifacts to test/ prefix'
-        type: boolean
-        default: false
 
 jobs:
   detect:
@@ -25,11 +19,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install packaging
+
       - name: Detect changed layers
         id: detect
         run: |
-          # Run detect-changes.sh to find changed layers
-          RESULT=$(./scripts/detect-changes.sh pr "${{ github.base_ref }}")
+          # Get changed files and filter to layers/ only
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '^layers/' || true)
+
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "Changed files in layers/:"
+            echo "$CHANGED_FILES"
+          fi
+
+          # Build matrix from changed layer paths
+          RESULT=$(echo "$CHANGED_FILES" | python scripts/layer_config.py)
           echo "Detection result: $RESULT"
 
           # Extract values from JSON output
@@ -37,11 +47,12 @@ jobs:
           HAS_CHANGES=$(echo "$RESULT" | jq -r '.has_changes')
 
           # Simple matrix for validate job (layer name and version)
-          # Transform from {name, version} to {layer, version} for consistency
+          # Wrap in {include: [...]} for GitHub Actions
           VALIDATE_MATRIX=$(echo "$RESULT" | jq -c '{include: [.matrix[] | {layer: .name, version: .version}]}')
 
           # Build matrix for build job (layer, version, python, arch)
-          BUILD_MATRIX=$(echo "$RESULT" | jq -c '.build_matrix')
+          # Wrap in {include: [...]} for GitHub Actions
+          BUILD_MATRIX=$(echo "$RESULT" | jq -c '{include: .build_matrix}')
 
           # Set outputs
           echo "layers=$LAYERS" >> $GITHUB_OUTPUT
@@ -49,7 +60,6 @@ jobs:
           echo "build_matrix=$BUILD_MATRIX" >> $GITHUB_OUTPUT
           echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
 
-          # Log summary
           if [ "$HAS_CHANGES" = "true" ]; then
             echo "::notice::Changed layers detected: $LAYERS"
           else
@@ -81,12 +91,11 @@ jobs:
           version: "latest"
 
       - name: Check lockfile is up to date
-        id: lockfile
         working-directory: layers/${{ matrix.layer }}
         run: |
           echo "Checking lockfile for ${{ matrix.layer }}..."
           if ! uv lock --check; then
-            echo "::error::ERROR: Lockfile out of date in layers/${{ matrix.layer }}/. Run 'cd layers/${{ matrix.layer }} && uv lock' to fix."
+            echo "::error::Lockfile out of date. Run 'cd layers/${{ matrix.layer }} && uv lock'"
             exit 1
           fi
           echo "✓ Lockfile is up to date"
@@ -98,19 +107,15 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Check S3 version does not exist
-        id: version-check
         run: |
           echo "Checking if version ${{ matrix.version }} exists for layer '${{ matrix.layer }}'..."
+          pip install packaging boto3 > /dev/null 2>&1
 
-          # Install dependencies for validate-config.py (packaging is needed for SpecifierSet)
-          pip install packaging > /dev/null 2>&1
-
-          # check-version returns exit code 0 if version EXISTS, 1 if it does NOT exist
-          if python scripts/validate-config.py check-version "layers/${{ matrix.layer }}" --bucket "${{ vars.LAMBDA_LAYERS_BUCKET }}" --prefix layers; then
-            echo "::error::ERROR: Version ${{ matrix.version }} already exists for layer '${{ matrix.layer }}'. Bump version in pyproject.toml."
+          if python scripts/layer_s3.py version-exists "${{ matrix.layer }}" "${{ matrix.version }}" "${{ vars.LAMBDA_LAYERS_BUCKET }}"; then
+            echo "::error::Version ${{ matrix.version }} already exists. Bump version in pyproject.toml."
             exit 1
           fi
-          echo "✓ Version ${{ matrix.version }} is available (does not exist in S3)"
+          echo "✓ Version ${{ matrix.version }} is available"
 
   build:
     name: Build ${{ matrix.layer }} py${{ matrix.python }}-${{ matrix.arch }}
@@ -133,8 +138,8 @@ jobs:
         with:
           version: "latest"
 
-      - name: Install build dependencies
-        run: pip install packaging
+      - name: Install dependencies
+        run: pip install packaging boto3
 
       - name: Build layer variant
         id: build
@@ -142,7 +147,6 @@ jobs:
           echo "Building ${{ matrix.layer }} (Python ${{ matrix.python }}, ${{ matrix.arch }})..."
           ./scripts/build-layer.sh "${{ matrix.layer }}" "${{ matrix.python }}" "${{ matrix.arch }}"
 
-          # Calculate python_short (remove dots from version)
           PYTHON_SHORT="${{ matrix.python }}"
           PYTHON_SHORT="${PYTHON_SHORT//./}"
           echo "python_short=$PYTHON_SHORT" >> $GITHUB_OUTPUT
@@ -152,17 +156,22 @@ jobs:
         with:
           name: ${{ matrix.layer }}-${{ matrix.version }}-py${{ steps.build.outputs.python_short }}-${{ matrix.arch }}
           path: .build/${{ matrix.layer }}/dist/py${{ steps.build.outputs.python_short }}-${{ matrix.arch }}.zip
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
   upload-test:
     name: Upload Test Artifacts
     needs: [detect, build]
-    if: inputs.upload_test == true && needs.detect.outputs.has_changes == 'true'
+    if: needs.detect.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
+    environment: test-upload
     permissions:
       id-token: write
       contents: read
+      pull-requests: write
+    outputs:
+      commit_sha: ${{ steps.upload.outputs.commit_sha }}
+      expiry_date: ${{ steps.upload.outputs.expiry_date }}
     steps:
       - uses: actions/checkout@v6
 
@@ -176,49 +185,121 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: artifacts
+          merge-multiple: false
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f -name "*.zip" || echo "No artifacts found"
 
       - name: Upload test artifacts to S3
+        id: upload
         env:
           BUILD_MATRIX: ${{ needs.detect.outputs.build_matrix }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "Uploading test artifacts for PR #$PR_NUMBER"
-          echo ""
+          pip install boto3 > /dev/null 2>&1
 
-          # Parse build matrix and upload each artifact
+          # Use short commit SHA for test prefix
+          COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          echo "commit_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+          # Calculate expiry date (7 days from now)
+          EXPIRY_DATE=$(date -u -d "+7 days" "+%Y-%m-%d %H:%M UTC")
+          echo "expiry_date=$EXPIRY_DATE" >> $GITHUB_OUTPUT
+
+          echo "Uploading test artifacts to s3://${{ vars.LAMBDA_LAYERS_BUCKET }}/test/.../${SHORT_SHA}/"
+
           echo "$BUILD_MATRIX" | jq -c '.include[]' | while read -r entry; do
             LAYER=$(echo "$entry" | jq -r '.layer')
             VERSION=$(echo "$entry" | jq -r '.version')
             PYTHON=$(echo "$entry" | jq -r '.python')
             ARCH=$(echo "$entry" | jq -r '.arch')
 
-            # Calculate python_short (remove dots from version)
             PYTHON_SHORT="${PYTHON//./}"
-
-            # Artifact name matches the upload pattern from build job
             ARTIFACT_NAME="${LAYER}-${VERSION}-py${PYTHON_SHORT}-${ARCH}"
             ARTIFACT_FILE="py${PYTHON_SHORT}-${ARCH}.zip"
 
-            echo "Processing: $ARTIFACT_NAME"
+            echo "Processing: $ARTIFACT_NAME ($ARTIFACT_FILE)"
 
-            # Create build directory structure expected by upload-layer.sh
             BUILD_DIR=".build/${LAYER}/dist"
             mkdir -p "$BUILD_DIR"
 
-            # Move artifact to expected location
+            # Try both possible locations (v7 behavior varies)
             if [ -f "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" ]; then
               cp "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" "$BUILD_DIR/"
-
-              # Upload to test prefix (allows overwriting)
-              ./scripts/upload-layer.sh "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" "test/${PR_NUMBER}"
-
-              # Clean up for next iteration
-              rm -rf ".build/${LAYER}"
+            elif [ -f "artifacts/${ARTIFACT_FILE}" ]; then
+              cp "artifacts/${ARTIFACT_FILE}" "$BUILD_DIR/"
             else
-              echo "::warning::Artifact not found: artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}"
+              echo "::error::Artifact not found: ${ARTIFACT_NAME}/${ARTIFACT_FILE}"
+              echo "Available files:"
+              find artifacts -type f -name "*.zip"
+              exit 1
             fi
 
-            echo ""
+            python ./scripts/layer_s3.py upload "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" \
+              --prefix "test/${LAYER}/${VERSION}/${SHORT_SHA}"
+            rm -rf ".build/${LAYER}"
           done
 
-          echo "✓ Test artifacts uploaded to s3://${{ vars.LAMBDA_LAYERS_BUCKET }}/test/${PR_NUMBER}/"
+          echo "✓ Test artifacts uploaded"
+
+      - name: Comment on PR with test layer info
+        uses: actions/github-script@v7
+        env:
+          BUILD_MATRIX: ${{ needs.detect.outputs.build_matrix }}
+          COMMIT_SHA: ${{ steps.upload.outputs.commit_sha }}
+          EXPIRY_DATE: ${{ steps.upload.outputs.expiry_date }}
+        with:
+          script: |
+            const buildMatrix = JSON.parse(process.env.BUILD_MATRIX);
+            const commitSha = process.env.COMMIT_SHA;
+            const expiryDate = process.env.EXPIRY_DATE;
+
+            // Generate test_layers entries
+            const testLayerEntries = buildMatrix.include.map(item => {
+              const pythonShort = item.python.replace('.', '');
+              return `  { name = "${item.layer}", version = "${item.version}", python = "${pythonShort}", arch = "${item.arch}", commit = "${commitSha}" }`;
+            }).join(',\n');
+
+            const body = `## ✅ Test artifacts uploaded
+
+            **Commit:** \`${commitSha}\`
+
+            ### Use in Terraform:
+
+            \`\`\`hcl
+            test_layers = [
+            ${testLayerEntries}
+            ]
+            \`\`\`
+
+            ⚠️ **These artifacts will be automatically deleted on ${expiryDate}**`;
+
+            // Find and update existing comment or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Test artifacts uploaded')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }

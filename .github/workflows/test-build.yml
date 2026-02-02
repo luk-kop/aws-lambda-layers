@@ -3,8 +3,8 @@ name: Test Build
 on:
   workflow_dispatch:
     inputs:
-      pr_number:
-        description: 'PR number for S3 prefix (e.g., 123)'
+      commit_sha:
+        description: 'Short commit SHA for S3 prefix (e.g., abc123f)'
         required: true
         type: string
       layers:
@@ -205,10 +205,10 @@ jobs:
 
       - name: Publish to S3 test prefix
         run: |
-          PR_NUM="${{ inputs.pr_number }}"
+          COMMIT_SHA="${{ inputs.commit_sha }}"
           LAYERS='${{ needs.detect-layers.outputs.layers }}'
 
-          echo "Publishing test artifacts for PR #$PR_NUM..."
+          echo "Publishing test artifacts for commit $COMMIT_SHA..."
 
           # Process each artifact directory
           for artifact_dir in artifacts/*/; do
@@ -231,7 +231,7 @@ jobs:
               [ -f "$zip_file" ] || continue
 
               FILENAME=$(basename "$zip_file")
-              S3_KEY="test/$PR_NUM/$LAYER_NAME/$VERSION/$FILENAME"
+              S3_KEY="test/$LAYER_NAME/$VERSION/$COMMIT_SHA/$FILENAME"
               S3_PATH="s3://$ARTIFACTS_BUCKET/$S3_KEY"
 
               echo "Uploading: $FILENAME -> $S3_PATH"
@@ -240,11 +240,11 @@ jobs:
           done
 
           echo ""
-          echo "✓ Test artifacts uploaded to s3://$ARTIFACTS_BUCKET/test/$PR_NUM/"
+          echo "✓ Test artifacts uploaded"
           echo ""
           echo "To deploy these test layers with Terraform, use:"
           echo ""
-          echo '  layers = ['
+          echo '  test_layers = ['
 
           # Generate Terraform usage example
           echo "$LAYERS" | python3 -c "
@@ -261,7 +261,7 @@ jobs:
               for py in layer_config['python_versions']:
                   for arch in layer_config['architectures']:
                       py_short = py.replace('.', '')
-                      print(f'    {{ name = \"{layer}\", version = \"{version}\", python = \"{py_short}\", arch = \"{arch}\", s3_prefix = \"test/${{ inputs.pr_number }}\" }}')
+                      print(f'    {{ name = \"{layer}\", version = \"{version}\", python = \"{py_short}\", arch = \"{arch}\", commit = \"${{ inputs.commit_sha }}\" }}')
           "
 
           echo '  ]'
@@ -277,7 +277,7 @@ jobs:
         run: |
           echo "## Test Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**PR Number:** ${{ inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit SHA:** ${{ inputs.commit_sha }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.detect-layers.outputs.has_layers }}" != "true" ]; then
@@ -312,5 +312,5 @@ jobs:
           if [ "${{ needs.publish-test.result }}" == "success" ]; then
             echo "### S3 Upload" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Artifacts uploaded to: \`s3://${{ vars.LAMBDA_LAYERS_BUCKET }}/test/${{ inputs.pr_number }}/\`" >> $GITHUB_STEP_SUMMARY
+            echo "Test artifacts uploaded for commit \`${{ inputs.commit_sha }}\`" >> $GITHUB_STEP_SUMMARY
           fi

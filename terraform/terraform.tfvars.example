@@ -1,0 +1,18 @@
+aws_region        = "eu-west-1"
+project_name      = "my-project"
+artifacts_bucket  = "my-shared-lambda-layers" # S3 bucket with layer artifacts (shared account)
+layer_name_prefix = ""                        # optional, e.g., "myapp" -> "myapp-common-v1_0-..."
+
+# Production layers (from layers/ S3 prefix)
+# Maps to S3 key: layers/{name}/{version}/py{python}-{arch}.zip
+# Lambda name: {name}-v{version}-py{python}-{arch}
+layers = [
+  { name = "common", version = "1.0", python = "312", arch = "x86_64" },
+]
+
+# Test layers (from test/<name>/<version>/<commit>/ S3 prefix) - typically empty in prod
+# Maps to S3 key: test/{name}/{version}/{commit}/py{python}-{arch}.zip
+# Lambda name: test-{name}-v{version}-{commit}-py{python}-{arch}
+test_layers = [
+  { name = "common", version = "1.0", python = "312", arch = "x86_64", commit = "abc123f" },
+]

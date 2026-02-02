@@ -1,0 +1,5 @@
+# Development dependencies for running tests and scripts
+boto3>=1.35
+hypothesis>=6.100
+packaging>=24.0
+pytest>=8.0

@@ -26,11 +26,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install packaging
+
       - name: Detect changed layers
         id: detect
         run: |
-          # Run detect-changes.sh to find changed layers in push to main
-          RESULT=$(./scripts/detect-changes.sh push)
+          # Get changed files and filter to layers/ only
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep '^layers/' || true)
+
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "Changed files in layers/:"
+            echo "$CHANGED_FILES"
+          fi
+
+          # Build matrix from changed layer paths
+          RESULT=$(echo "$CHANGED_FILES" | python scripts/layer_config.py)
           echo "Detection result: $RESULT"
 
           # Extract values from JSON output
@@ -38,10 +54,12 @@ jobs:
           HAS_CHANGES=$(echo "$RESULT" | jq -r '.has_changes')
 
           # Simple matrix for jobs that need layer name and version
+          # Wrap in {include: [...]} for GitHub Actions
           VALIDATE_MATRIX=$(echo "$RESULT" | jq -c '{include: [.matrix[] | {layer: .name, version: .version}]}')
 
           # Build matrix for build job (layer, version, python, arch)
-          BUILD_MATRIX=$(echo "$RESULT" | jq -c '.build_matrix')
+          # Wrap in {include: [...]} for GitHub Actions
+          BUILD_MATRIX=$(echo "$RESULT" | jq -c '{include: .build_matrix}')
 
           # Set outputs
           echo "layers=$LAYERS" >> $GITHUB_OUTPUT
@@ -78,8 +96,8 @@ jobs:
         with:
           version: "latest"
 
-      - name: Install build dependencies
-        run: pip install packaging
+      - name: Install dependencies
+        run: pip install packaging boto3
 
       - name: Build layer variant
         id: build
@@ -122,6 +140,12 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: artifacts
+          merge-multiple: false
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f -name "*.zip" || echo "No artifacts found"
 
       - name: Publish artifacts to S3
         id: publish
@@ -154,19 +178,24 @@ jobs:
             BUILD_DIR=".build/${LAYER}/dist"
             mkdir -p "$BUILD_DIR"
 
-            # Move artifact to expected location
+            # Try both possible locations (v7 behavior varies)
             if [ -f "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" ]; then
               cp "artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}" "$BUILD_DIR/"
-
-              # Upload to layers/ prefix (immutability enforced by upload-layer.sh)
-              ./scripts/upload-layer.sh "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" "layers"
-
-              # Clean up for next iteration
-              rm -rf ".build/${LAYER}"
+            elif [ -f "artifacts/${ARTIFACT_FILE}" ]; then
+              cp "artifacts/${ARTIFACT_FILE}" "$BUILD_DIR/"
             else
-              echo "::error::Artifact not found: artifacts/${ARTIFACT_NAME}/${ARTIFACT_FILE}"
+              echo "::error::Artifact not found: ${ARTIFACT_NAME}/${ARTIFACT_FILE}"
+              echo "Available files:"
+              find artifacts -type f -name "*.zip"
               exit 1
             fi
+
+            # Upload to layers/ prefix (immutability enforced by layer_s3.py)
+            python ./scripts/layer_s3.py upload "$LAYER" "$VERSION" "${{ vars.LAMBDA_LAYERS_BUCKET }}" \
+              --prefix "layers/${LAYER}/${VERSION}"
+
+            # Clean up for next iteration
+            rm -rf ".build/${LAYER}"
 
             echo ""
           done

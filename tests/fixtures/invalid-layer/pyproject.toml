@@ -1,0 +1,13 @@
+[project]
+name = "invalid-layer"
+version = "1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.31",
+]
+
+[tool.lambda_layer]
+# Python 3.10 is NOT allowed by requires-python >=3.12
+python_versions = ["3.10", "3.12"]
+architectures = ["x86_64", "arm64"]
+platforms = { x86_64 = "manylinux2014_x86_64", arm64 = "manylinux2014_aarch64" }
